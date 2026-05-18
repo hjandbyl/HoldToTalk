@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct TranscriptionOverlayView: View {
@@ -38,7 +37,7 @@ struct TranscriptionOverlayView: View {
 
     private var surfaceBody: some View {
         HStack(spacing: hasTranscript ? 14 : 0) {
-            RecordingWaveform()
+            RecordingWaveform(level: controller.inputLevel, isRecording: controller.isRecording)
                 .frame(width: 26, height: 24)
 
             if hasTranscript {
@@ -60,31 +59,34 @@ struct TranscriptionOverlayView: View {
 }
 
 private struct RecordingWaveform: View {
-    @State private var isAnimating = false
+    let level: Double
+    let isRecording: Bool
+    @State private var samples = Array(repeating: 0.0, count: 5)
 
-    private let bars: [(collapsed: CGFloat, expanded: CGFloat, delay: Double)] = [
-        (10, 18, 0.00),
-        (14, 26, 0.12),
-        (8, 21, 0.24),
-        (12, 24, 0.08)
-    ]
+    private let barScales: [CGFloat] = [0.62, 0.86, 1.0, 0.78, 0.56]
 
     var body: some View {
         HStack(alignment: .center, spacing: 3) {
-            ForEach(Array(bars.enumerated()), id: \.offset) { _, bar in
+            ForEach(Array(samples.enumerated()), id: \.offset) { index, sample in
+                let displayLevel = CGFloat(sample)
                 Capsule(style: .continuous)
-                    .fill(Color.red)
-                    .frame(width: 4, height: isAnimating ? bar.expanded : bar.collapsed)
-                    .animation(
-                        .easeInOut(duration: 0.58)
-                            .repeatForever(autoreverses: true)
-                            .delay(bar.delay),
-                        value: isAnimating
-                    )
+                    .fill(Color.red.opacity(0.45 + Double(displayLevel) * 0.55))
+                    .frame(width: 4, height: 6 + displayLevel * 22 * barScales[index])
             }
         }
         .onAppear {
-            isAnimating = true
+            samples = Array(repeating: isRecording ? min(1, max(0, level)) : 0, count: barScales.count)
         }
+        .onChange(of: level) { _, newValue in
+            let clamped = isRecording ? min(1, max(0, newValue)) : 0
+            samples.removeFirst()
+            samples.append(clamped)
+        }
+        .onChange(of: isRecording) { _, newValue in
+            if !newValue {
+                samples = Array(repeating: 0, count: barScales.count)
+            }
+        }
+        .animation(.easeOut(duration: 0.09), value: samples)
     }
 }
