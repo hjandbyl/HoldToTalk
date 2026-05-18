@@ -1,0 +1,323 @@
+import AVFoundation
+import Foundation
+
+final class AudioRecorder: @unchecked Sendable {
+    typealias StreamingChunkHandler = @Sendable (Data) -> Void
+    typealias LevelHandler = @Sendable (Double) -> Void
+
+    private let stateQueue = DispatchQueue(label: "HoldToTalk.AudioRecorder.state")
+    private var engine: AVAudioEngine?
+    private var audioFile: AVAudioFile?
+    private var recordingURL: URL?
+    private var capturedFrames: AVAudioFramePosition = 0
+    private var writeFailures = 0
+    private var inputFormatDescription = "Unknown"
+    private var voiceProcessingDescription = "voice processing not started"
+    private var inputSampleRate: Double = 0
+    private var inputChannelCount: AVAudioChannelCount = 1
+    private var inputFormat: AVAudioFormat?
+    private var startedAt: Date?
+    private var streamingConverter: AVAudioConverter?
+    private var streamingOutputFormat: AVAudioFormat?
+    private var streamingChunkHandler: StreamingChunkHandler?
+    private var levelHandler: LevelHandler?
+    private var pendingStreamingAudio = Data()
+
+    private static let streamingChunkByteCount = 6_400
+
+    var captureSummary: String {
+        stateQueue.sync {
+            let elapsed = startedAt.map { Date().timeIntervalSince($0) } ?? 0
+            return String(
+                format: "held %.2fs, captured %.2fs, write failures %d, format %@, %@",
+                elapsed,
+                capturedDuration,
+                writeFailures,
+                inputFormatDescription,
+                voiceProcessingDescription
+            )
+        }
+    }
+
+    private var capturedDuration: TimeInterval {
+        guard inputSampleRate > 0 else { return 0 }
+        return Double(capturedFrames) / inputSampleRate
+    }
+
+    func prepare() throws {
+        if let engine, engine.isRunning {
+            return
+        }
+
+        try configureEngine()
+        try engine?.start()
+    }
+
+    func start(
+        streamingChunkHandler: StreamingChunkHandler? = nil,
+        levelHandler: LevelHandler? = nil
+    ) throws -> URL {
+        try prepare()
+
+        let inputFormat = try stateQueue.sync {
+            guard inputSampleRate > 0 else {
+                throw AudioRecorderError.noInputDevice
+            }
+
+            return self.inputFormat
+        }
+
+        guard let inputFormat else {
+            throw AudioRecorderError.couldNotCreateOutputFormat
+        }
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("HoldToTalk-\(UUID().uuidString)")
+            .appendingPathExtension("wav")
+
+        let file = try AVAudioFile(forWriting: url, settings: inputFormat.settings)
+
+        stateQueue.sync {
+            audioFile = file
+            recordingURL = url
+            capturedFrames = 0
+            writeFailures = 0
+            startedAt = Date()
+            self.streamingChunkHandler = streamingChunkHandler
+            self.levelHandler = levelHandler
+            pendingStreamingAudio.removeAll(keepingCapacity: true)
+            if streamingChunkHandler != nil {
+                configureStreamingConverterLocked(inputFormat: inputFormat)
+            }
+        }
+
+        return url
+    }
+
+    private func configureEngine() throws {
+        let engine = AVAudioEngine()
+        let inputNode = engine.inputNode
+        configureVoiceProcessing(on: inputNode)
+
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+
+        guard inputFormat.channelCount > 0 else {
+            throw AudioRecorderError.noInputDevice
+        }
+
+        stateQueue.sync {
+            self.engine = engine
+            inputFormatDescription = "\(Int(inputFormat.sampleRate)) Hz, \(inputFormat.channelCount) ch"
+            inputSampleRate = inputFormat.sampleRate
+            inputChannelCount = inputFormat.channelCount
+            self.inputFormat = inputFormat
+        }
+
+        inputNode.removeTap(onBus: 0)
+        inputNode.installTap(onBus: 0, bufferSize: 2_048, format: inputFormat) { [weak self] buffer, _ in
+            self?.write(buffer)
+        }
+
+        engine.prepare()
+    }
+
+    private func configureVoiceProcessing(on inputNode: AVAudioInputNode) {
+        if inputNode.isVoiceProcessingEnabled {
+            try? inputNode.setVoiceProcessingEnabled(false)
+        }
+
+        stateQueue.sync {
+            voiceProcessingDescription = "system mic mode \(Self.microphoneModeDescription())"
+        }
+    }
+
+    func stop() -> URL? {
+        let result = stateQueue.sync { () -> (url: URL?, engine: AVAudioEngine?) in
+            let url = recordingURL
+            audioFile = nil
+            recordingURL = nil
+            streamingChunkHandler = nil
+            levelHandler = nil
+            streamingConverter = nil
+            streamingOutputFormat = nil
+            let runningEngine = engine
+            self.engine = nil
+            inputFormat = nil
+            return (url, runningEngine)
+        }
+
+        result.engine?.inputNode.removeTap(onBus: 0)
+        result.engine?.stop()
+        return result.url
+    }
+
+    func takePendingStreamingAudio() -> Data {
+        stateQueue.sync {
+            defer { pendingStreamingAudio.removeAll(keepingCapacity: false) }
+            return pendingStreamingAudio
+        }
+    }
+
+    private func write(_ buffer: AVAudioPCMBuffer) {
+        guard buffer.frameLength > 0 else { return }
+
+        let level = Self.audioLevel(from: buffer)
+
+        stateQueue.sync {
+            guard let audioFile else { return }
+
+            do {
+                try audioFile.write(from: buffer)
+                capturedFrames += AVAudioFramePosition(buffer.frameLength)
+                convertAndEmitStreamingAudioLocked(buffer)
+                levelHandler?(level)
+            } catch {
+                writeFailures += 1
+            }
+        }
+    }
+
+    private static func audioLevel(from buffer: AVAudioPCMBuffer) -> Double {
+        let frameCount = Int(buffer.frameLength)
+        let channelCount = Int(buffer.format.channelCount)
+        guard frameCount > 0, channelCount > 0 else { return 0 }
+
+        var sumSquares = 0.0
+        var sampleCount = 0
+
+        if let channels = buffer.floatChannelData {
+            for channel in 0..<channelCount {
+                let samples = channels[channel]
+                for frame in 0..<frameCount {
+                    let sample = Double(samples[frame])
+                    sumSquares += sample * sample
+                    sampleCount += 1
+                }
+            }
+        } else if let channels = buffer.int16ChannelData {
+            for channel in 0..<channelCount {
+                let samples = channels[channel]
+                for frame in 0..<frameCount {
+                    let sample = Double(samples[frame]) / Double(Int16.max)
+                    sumSquares += sample * sample
+                    sampleCount += 1
+                }
+            }
+        } else if let channels = buffer.int32ChannelData {
+            for channel in 0..<channelCount {
+                let samples = channels[channel]
+                for frame in 0..<frameCount {
+                    let sample = Double(samples[frame]) / Double(Int32.max)
+                    sumSquares += sample * sample
+                    sampleCount += 1
+                }
+            }
+        }
+
+        guard sampleCount > 0 else { return 0 }
+
+        let rms = sqrt(sumSquares / Double(sampleCount))
+        return min(1, max(0, sqrt(rms) * 2.6))
+    }
+
+    private func configureStreamingConverterLocked(inputFormat: AVAudioFormat) {
+        guard
+            let outputFormat = AVAudioFormat(
+                commonFormat: .pcmFormatInt16,
+                sampleRate: 16_000,
+                channels: 1,
+                interleaved: true
+            )
+        else {
+            return
+        }
+
+        streamingOutputFormat = outputFormat
+        streamingConverter = AVAudioConverter(from: inputFormat, to: outputFormat)
+    }
+
+    private func convertAndEmitStreamingAudioLocked(_ buffer: AVAudioPCMBuffer) {
+        guard
+            let streamingConverter,
+            let streamingOutputFormat,
+            let streamingChunkHandler
+        else {
+            return
+        }
+
+        let ratio = streamingOutputFormat.sampleRate / buffer.format.sampleRate
+        let outputCapacity = AVAudioFrameCount((Double(buffer.frameLength) * ratio).rounded(.up) + 32)
+
+        guard let outputBuffer = AVAudioPCMBuffer(
+            pcmFormat: streamingOutputFormat,
+            frameCapacity: max(1, outputCapacity)
+        ) else {
+            return
+        }
+
+        var hasProvidedInput = false
+        var conversionError: NSError?
+        streamingConverter.convert(to: outputBuffer, error: &conversionError) { _, status in
+            if hasProvidedInput {
+                status.pointee = .noDataNow
+                return nil
+            }
+
+            hasProvidedInput = true
+            status.pointee = .haveData
+            return buffer
+        }
+
+        guard
+            conversionError == nil,
+            outputBuffer.frameLength > 0,
+            let samples = outputBuffer.int16ChannelData
+        else {
+            return
+        }
+
+        pendingStreamingAudio.append(
+            Data(
+                bytes: samples[0],
+                count: Int(outputBuffer.frameLength) * MemoryLayout<Int16>.size
+            )
+        )
+
+        while pendingStreamingAudio.count >= Self.streamingChunkByteCount {
+            let chunk = pendingStreamingAudio.prefix(Self.streamingChunkByteCount)
+            streamingChunkHandler(Data(chunk))
+            pendingStreamingAudio.removeFirst(Self.streamingChunkByteCount)
+        }
+    }
+
+    private static func microphoneModeDescription() -> String {
+        if #available(macOS 12.0, *) {
+            switch AVCaptureDevice.activeMicrophoneMode {
+            case .standard:
+                return "Standard"
+            case .wideSpectrum:
+                return "Wide Spectrum"
+            case .voiceIsolation:
+                return "Voice Isolation"
+            @unknown default:
+                return "Unknown"
+            }
+        }
+
+        return "Unavailable"
+    }
+}
+
+enum AudioRecorderError: LocalizedError {
+    case noInputDevice
+    case couldNotCreateOutputFormat
+
+    var errorDescription: String? {
+        switch self {
+        case .noInputDevice:
+            return "No microphone input device is available."
+        case .couldNotCreateOutputFormat:
+            return "Could not create the 16 kHz WAV recording format."
+        }
+    }
+}

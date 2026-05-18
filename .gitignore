@@ -1,0 +1,9 @@
+.build/
+.swiftpm/
+.venv/
+models/
+ThirdParty/
+__pycache__/
+dist/
+*.xcuserstate
+.DS_Store
