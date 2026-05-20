@@ -31,7 +31,7 @@ Ad-hoc packages are built with SwiftPM release mode and written to `dist-adhoc/H
 You can override the app version used in the generated bundle:
 
 ```bash
-HOLDTOTALK_VERSION=0.1.1 HOLDTOTALK_BUILD_NUMBER=1 ./script/build_and_run.sh --adhoc
+HOLDTOTALK_VERSION=0.1.2 HOLDTOTALK_BUILD_NUMBER=2 ./script/build_and_run.sh --adhoc
 ```
 
 ## Permissions

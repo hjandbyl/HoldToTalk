@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import SwiftUI
 
 @main
@@ -19,24 +18,41 @@ struct HoldToTalkApp: App {
         AppDisplayMode(rawValue: appDisplayModeID) ?? AppDisplayModePreference.defaultMode
     }
 
+    @SceneBuilder
     var body: some Scene {
         mainWindowScene
+        menuBarScene
+    }
+
+    private var statusItemIsInserted: Binding<Bool> {
+        Binding {
+            appDisplayMode.showsStatusItem
+        } set: { _ in
+        }
+    }
+
+    private var menuBarScene: some Scene {
+        MenuBarExtra(isInserted: statusItemIsInserted) {
+            MenuBarContent(controller: controller)
+                .environment(\.locale, appLanguage.locale)
+        } label: {
+            MenuBarStatusIcon(imageName: controller.menuBarTemplateIconName)
+        }
+        .menuBarExtraStyle(.menu)
     }
 
     private var mainWindowScene: some Scene {
-        WindowGroup("HoldToTalk", id: "main") {
+        Window("HoldToTalk", id: "main") {
             ContentView(controller: controller)
                 .frame(minWidth: 880, minHeight: 660)
                 .environment(\.locale, appLanguage.locale)
                 .onChange(of: appLanguageID) { _, _ in
                     controller.appLanguageDidChange()
-                    AppStatusItemController.shared.refresh()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
                     guard appLanguage == .system else { return }
                     localeRefreshToken = UUID()
                     controller.appLanguageDidChange()
-                    AppStatusItemController.shared.refresh()
                 }
                 .onChange(of: appDisplayModeID) { _, _ in
                     applyAppDisplayMode(appDisplayMode)
@@ -95,114 +111,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await HoldToTalkController.shared.start()
         }
     }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
 }
 
 @MainActor
 private func applyAppDisplayMode(_ mode: AppDisplayMode) {
     AppDisplayModePreference.apply(mode: mode)
-    AppStatusItemController.shared.setVisible(mode.showsStatusItem, controller: .shared)
-}
-
-@MainActor
-private final class AppStatusItemController: NSObject {
-    static let shared = AppStatusItemController()
-
-    private var statusItem: NSStatusItem?
-    private weak var controller: HoldToTalkController?
-    private var controllerChangeCancellable: AnyCancellable?
-
-    func setVisible(_ visible: Bool, controller: HoldToTalkController) {
-        self.controller = controller
-
-        if visible {
-            if statusItem == nil {
-                statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            }
-            observe(controller)
-            refresh()
-        } else {
-            if let statusItem {
-                NSStatusBar.system.removeStatusItem(statusItem)
-            }
-            statusItem = nil
-            controllerChangeCancellable = nil
-        }
-    }
-
-    func refresh() {
-        guard let statusItem, let controller else { return }
-
-        if let image = MenuBarIconProvider.image(named: controller.menuBarTemplateIconName) {
-            statusItem.button?.image = image
-            statusItem.button?.imagePosition = .imageOnly
-        } else {
-            statusItem.button?.title = "HoldToTalk"
-        }
-
-        statusItem.menu = makeMenu(controller: controller)
-    }
-
-    private func observe(_ controller: HoldToTalkController) {
-        guard controllerChangeCancellable == nil else { return }
-        controllerChangeCancellable = controller.objectWillChange.sink { [weak self] _ in
-            Task { @MainActor in
-                self?.refresh()
-            }
-        }
-    }
-
-    private func makeMenu(controller: HoldToTalkController) -> NSMenu {
-        let menu = NSMenu()
-
-        menu.addItem(menuItem(title: L10n.tr("Open HoldToTalk"), action: #selector(openHoldToTalk)))
-        menu.addItem(.separator())
-
-        let statusItem = NSMenuItem(title: controller.statusMessage, action: nil, keyEquivalent: "")
-        statusItem.isEnabled = false
-        menu.addItem(statusItem)
-
-        menu.addItem(menuItem(
-            title: controller.isEnabled ? L10n.tr("Pause Listening") : L10n.tr("Resume Listening"),
-            action: #selector(toggleListening)
-        ))
-        menu.addItem(menuItem(title: L10n.tr("Request Permissions"), action: #selector(requestPermissions)))
-        menu.addItem(.separator())
-
-        let versionItem = NSMenuItem(title: AppVersion.displayText, action: nil, keyEquivalent: "")
-        versionItem.isEnabled = false
-        menu.addItem(versionItem)
-
-        let quitItem = menuItem(title: L10n.tr("Quit"), action: #selector(quit))
-        quitItem.keyEquivalent = "q"
-        menu.addItem(quitItem)
-
-        return menu
-    }
-
-    private func menuItem(title: String, action: Selector) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-        item.target = self
-        return item
-    }
-
-    @objc private func openHoldToTalk() {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
-    }
-
-    @objc private func toggleListening() {
-        guard let controller else { return }
-        controller.setListeningEnabled(!controller.isEnabled)
-        refresh()
-    }
-
-    @objc private func requestPermissions() {
-        controller?.requestAccessibilityPermission()
-        controller?.requestMicrophonePermission()
-        refresh()
-    }
-
-    @objc private func quit() {
-        NSApp.terminate(nil)
-    }
 }
