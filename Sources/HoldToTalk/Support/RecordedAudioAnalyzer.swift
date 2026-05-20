@@ -11,7 +11,7 @@ struct RecordedAudioStats {
         let durationText = String(format: "%.2fs", duration)
         let peakText = String(format: "%.2f%%", peak * 100)
         let rmsText = String(format: "%.2f%%", rms * 100)
-        return "\(durationText), peak \(peakText), rms \(rmsText)"
+        return L10n.tr("%@, peak %@, rms %@", durationText, peakText, rmsText)
     }
 }
 

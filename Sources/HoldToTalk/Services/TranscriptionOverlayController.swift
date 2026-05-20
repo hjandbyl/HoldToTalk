@@ -5,7 +5,15 @@ import SwiftUI
 final class TranscriptionOverlayController {
     private let controller: HoldToTalkController
     private var panel: NSPanel?
+    private var presentation: TranscriptionOverlayPresentation?
     private var displayRevision = 0
+
+    private let panelSize = NSSize(width: 560, height: 66)
+    private let materializeAnimation = Animation.easeOut(duration: 0.10)
+    private let settleAnimation = Animation.spring(duration: 0.18, bounce: 0.10)
+    private let dismissalAnimation = Animation.easeIn(duration: 0.14)
+    private let orbSettleDelay: Duration = .milliseconds(30)
+    private let dismissalDuration: Duration = .milliseconds(140)
 
     init(controller: HoldToTalkController) {
         self.controller = controller
@@ -17,65 +25,81 @@ final class TranscriptionOverlayController {
 
         panel?.orderOut(nil)
 
-        let panel = makePanel()
+        let presentation = TranscriptionOverlayPresentation()
+        let panel = makePanel(presentation: presentation)
         self.panel = panel
+        self.presentation = presentation
         positionPanel(panel)
 
-        panel.alphaValue = 0
-        panel.contentView?.alphaValue = 1
-        panel.contentView?.layer?.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        panel.contentView?.layer?.setAffineTransform(CGAffineTransform(scaleX: 0.98, y: 0.98))
         panel.orderFrontRegardless()
 
-        DispatchQueue.main.async { [weak self, weak panel] in
+        DispatchQueue.main.async { [weak self, weak panel, weak presentation] in
             guard
                 let self,
                 let panel,
+                let presentation,
                 self.displayRevision == revision,
-                self.panel === panel
+                self.panel === panel,
+                self.presentation === presentation
             else {
                 return
             }
 
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.18
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                panel.animator().alphaValue = 1
-                panel.contentView?.animator().layer?.setAffineTransform(.identity)
+            withAnimation(self.materializeAnimation) {
+                presentation.isVisible = true
+                presentation.stage = .droplet
             }
+
+            self.promoteDropletToOrb(
+                presentation: presentation,
+                panel: panel,
+                revision: revision
+            )
         }
     }
 
     func hide() {
-        guard let panel else { return }
+        guard let panel, let presentation else { return }
 
         displayRevision += 1
         let revision = displayRevision
 
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.12
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            panel.animator().alphaValue = 0
-        }, completionHandler: { [weak self, weak panel] in
-            Task { @MainActor in
+        withAnimation(dismissalAnimation) {
+            presentation.isDismissing = true
+            presentation.isVisible = false
+        }
+
+        let dismissalDuration = dismissalDuration
+        Task { [weak self, weak panel, weak presentation] in
+            try? await Task.sleep(for: dismissalDuration)
+
+            await MainActor.run {
                 guard
                     let self,
                     let panel,
+                    let presentation,
                     self.displayRevision == revision,
-                    self.panel === panel
+                    self.panel === panel,
+                    self.presentation === presentation
                 else {
                     return
                 }
 
                 panel.orderOut(nil)
                 self.panel = nil
+                self.presentation = nil
             }
-        })
+        }
     }
 
-    private func makePanel() -> NSPanel {
-        let hostingView = NSHostingView(rootView: TranscriptionOverlayView(controller: controller))
-        hostingView.frame = NSRect(x: 0, y: 0, width: 560, height: 70)
+    private func makePanel(presentation: TranscriptionOverlayPresentation) -> NSPanel {
+        let hostingView = NSHostingView(
+            rootView: TranscriptionOverlayView(
+                controller: controller,
+                presentation: presentation
+            )
+        )
+        hostingView.frame = NSRect(origin: .zero, size: panelSize)
 
         let panel = NSPanel(
             contentRect: hostingView.frame,
@@ -94,6 +118,36 @@ final class TranscriptionOverlayController {
         panel.hidesOnDeactivate = false
         panel.ignoresMouseEvents = true
         return panel
+    }
+
+    private func promoteDropletToOrb(
+        presentation: TranscriptionOverlayPresentation,
+        panel: NSPanel,
+        revision: Int
+    ) {
+        let orbSettleDelay = orbSettleDelay
+
+        Task { [weak self, weak panel, weak presentation] in
+            try? await Task.sleep(for: orbSettleDelay)
+
+            await MainActor.run {
+                guard
+                    let self,
+                    let panel,
+                    let presentation,
+                    self.displayRevision == revision,
+                    self.panel === panel,
+                    self.presentation === presentation,
+                    presentation.isVisible
+                else {
+                    return
+                }
+
+                withAnimation(self.settleAnimation) {
+                    presentation.stage = .orb
+                }
+            }
+        }
     }
 
     private func positionPanel(_ panel: NSPanel) {

@@ -13,7 +13,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "HoldToTalk",
-            dependencies: ["CSherpaOnnx"]
+            dependencies: ["CSherpaOnnx"],
+            resources: [
+                .process("Resources")
+            ]
         ),
         .target(
             name: "CSherpaOnnx",

@@ -8,23 +8,23 @@ enum PermissionHelper {
         AXIsProcessTrusted()
     }
 
-    static var hasInputMonitoringPermission: Bool {
-        CGPreflightListenEventAccess()
-    }
-
     static var microphoneStatusText: String {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
-            return "Granted"
+            return L10n.tr("Granted")
         case .denied:
-            return "Denied"
+            return L10n.tr("Denied")
         case .restricted:
-            return "Restricted"
+            return L10n.tr("Restricted")
         case .notDetermined:
-            return "Not requested"
+            return L10n.tr("Not requested")
         @unknown default:
-            return "Unknown"
+            return L10n.tr("Unknown")
         }
+    }
+
+    static var hasMicrophonePermission: Bool {
+        AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     }
 
     static func requestAccessibilityPermission() -> Bool {
@@ -32,7 +32,16 @@ enum PermissionHelper {
         return AXIsProcessTrustedWithOptions(options)
     }
 
-    static func requestInputMonitoringPermission() -> Bool {
-        CGRequestListenEventAccess()
+    static func openMicrophoneSettings() {
+        openSettingsPane("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+    }
+
+    static func openAccessibilitySettings() {
+        openSettingsPane("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+    }
+
+    private static func openSettingsPane(_ urlString: String) {
+        guard let url = URL(string: urlString) else { return }
+        NSWorkspace.shared.open(url)
     }
 }

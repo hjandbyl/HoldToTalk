@@ -1,4 +1,4 @@
-import ApplicationServices
+import AppKit
 import Foundation
 
 protocol GlobalFnKeyMonitorDelegate: AnyObject {
@@ -8,20 +8,18 @@ protocol GlobalFnKeyMonitorDelegate: AnyObject {
 final class GlobalFnKeyMonitor {
     weak var delegate: GlobalFnKeyMonitorDelegate?
 
-    private let stateLock = NSLock()
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
-    private var monitorRunLoop: CFRunLoop?
-    private var monitorThread: Thread?
+    var shortcut: HoldShortcut = .defaultShortcut {
+        didSet {
+            isFnDown = false
+        }
+    }
+
+    private var globalMonitor: Any?
+    private var localMonitor: Any?
     private var isFnDown = false
 
     var isRunning: Bool {
-        stateLock.lock()
-        let tap = eventTap
-        stateLock.unlock()
-
-        guard let tap else { return false }
-        return CFMachPortIsValid(tap)
+        globalMonitor != nil && localMonitor != nil
     }
 
     deinit {
@@ -29,164 +27,69 @@ final class GlobalFnKeyMonitor {
     }
 
     func start() throws {
-        if let tap = currentEventTap(), CFMachPortIsValid(tap) {
-            CGEvent.tapEnable(tap: tap, enable: true)
-            return
-        }
-
         guard PermissionHelper.isAccessibilityTrusted else {
             throw GlobalFnKeyMonitorError.missingAccessibilityPermission
         }
 
-        guard PermissionHelper.hasInputMonitoringPermission else {
-            throw GlobalFnKeyMonitorError.missingInputMonitoringPermission
+        guard !isRunning else { return }
+
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged, .keyDown, .keyUp]) { [weak self] event in
+            self?.handle(event)
         }
 
-        stop()
-
-        let startResult = EventTapStartResult()
-        let started = DispatchSemaphore(value: 0)
-        let thread = Thread { [weak self] in
-            guard let self else {
-                startResult.set(error: GlobalFnKeyMonitorError.couldNotCreateEventTap)
-                started.signal()
-                return
-            }
-
-            do {
-                try self.installEventTapOnCurrentThread()
-                started.signal()
-                CFRunLoopRun()
-                self.clearStoppedEventTap()
-            } catch {
-                startResult.set(error: error)
-                started.signal()
-            }
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown, .keyUp]) { [weak self] event in
+            self?.handle(event)
+            return event
         }
 
-        thread.name = "HoldToTalk Fn Key Monitor"
-
-        stateLock.lock()
-        monitorThread = thread
-        stateLock.unlock()
-
-        thread.start()
-
-        guard started.wait(timeout: .now() + 2) == .success else {
+        guard isRunning else {
             stop()
-            throw GlobalFnKeyMonitorError.couldNotCreateEventTap
-        }
-
-        if let error = startResult.error {
-            stop()
-            throw error
+            throw GlobalFnKeyMonitorError.couldNotCreateEventMonitor
         }
     }
 
     func rearm() throws {
-        DispatchQueue.main.async { [weak self] in
-            self?.isFnDown = false
-        }
+        isFnDown = false
 
-        if let tap = currentEventTap(), CFMachPortIsValid(tap) {
-            CGEvent.tapEnable(tap: tap, enable: true)
+        guard isRunning else {
+            try start()
             return
         }
-
-        try start()
     }
 
     func stop() {
-        stateLock.lock()
-        let source = runLoopSource
-        let tap = eventTap
-        let runLoop = monitorRunLoop
-
-        runLoopSource = nil
-        eventTap = nil
-        monitorRunLoop = nil
-        monitorThread = nil
-        stateLock.unlock()
-
-        if let source, let runLoop {
-            CFRunLoopRemoveSource(runLoop, source, .commonModes)
+        if let globalMonitor {
+            NSEvent.removeMonitor(globalMonitor)
         }
 
-        if let tap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-            CFMachPortInvalidate(tap)
+        if let localMonitor {
+            NSEvent.removeMonitor(localMonitor)
         }
 
-        if let runLoop {
-            CFRunLoopStop(runLoop)
-        }
-
-        DispatchQueue.main.async { [weak self] in
-            self?.isFnDown = false
-        }
+        globalMonitor = nil
+        localMonitor = nil
+        isFnDown = false
     }
 
-    private func currentEventTap() -> CFMachPort? {
-        stateLock.lock()
-        let tap = eventTap
-        stateLock.unlock()
-        return tap
-    }
-
-    private func installEventTapOnCurrentThread() throws {
-        let eventMask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
-        let userInfo = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
-
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .listenOnly,
-            eventsOfInterest: eventMask,
-            callback: fnKeyEventCallback,
-            userInfo: userInfo
-        ) else {
-            throw GlobalFnKeyMonitorError.couldNotCreateEventTap
-        }
-
-        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
-            CFMachPortInvalidate(tap)
-            throw GlobalFnKeyMonitorError.couldNotCreateEventTap
-        }
-
-        let runLoop = CFRunLoopGetCurrent()
-
-        stateLock.lock()
-        eventTap = tap
-        runLoopSource = source
-        monitorRunLoop = runLoop
-        stateLock.unlock()
-
-        CFRunLoopAddSource(runLoop, source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-    }
-
-    private func clearStoppedEventTap() {
-        stateLock.lock()
-        eventTap = nil
-        runLoopSource = nil
-        monitorRunLoop = nil
-        monitorThread = nil
-        stateLock.unlock()
-    }
-
-    fileprivate func handle(type: CGEventType, event: CGEvent) {
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let tap = currentEventTap(), CFMachPortIsValid(tap) {
-                CGEvent.tapEnable(tap: tap, enable: true)
+    private func handle(_ event: NSEvent) {
+        switch event.type {
+        case .flagsChanged:
+            if shortcut.keyCode == nil {
+                updateFnDown(shortcut.matchesModifierState(event.modifierFlags))
+            } else if isFnDown, !shortcut.matchesKeyEvent(event) {
+                updateFnDown(false)
             }
+        case .keyDown:
+            guard !event.isARepeat else { return }
+            if shortcut.matchesKeyEvent(event) {
+                updateFnDown(true)
+            }
+        case .keyUp:
+            if shortcut.keyCode == event.keyCode {
+                updateFnDown(false)
+            }
+        default:
             return
-        }
-
-        guard type == .flagsChanged else { return }
-
-        let nextFnDown = event.flags.contains(.maskSecondaryFn)
-        DispatchQueue.main.async { [weak self] in
-            self?.updateFnDown(nextFnDown)
         }
     }
 
@@ -198,47 +101,16 @@ final class GlobalFnKeyMonitor {
     }
 }
 
-private final class EventTapStartResult {
-    private let lock = NSLock()
-    private var storedError: Error?
-
-    var error: Error? {
-        lock.lock()
-        let error = storedError
-        lock.unlock()
-        return error
-    }
-
-    func set(error: Error) {
-        lock.lock()
-        storedError = error
-        lock.unlock()
-    }
-}
-
-private let fnKeyEventCallback: CGEventTapCallBack = { _, type, event, userInfo in
-    guard let userInfo else {
-        return Unmanaged.passUnretained(event)
-    }
-
-    let monitor = Unmanaged<GlobalFnKeyMonitor>.fromOpaque(userInfo).takeUnretainedValue()
-    monitor.handle(type: type, event: event)
-    return Unmanaged.passUnretained(event)
-}
-
 enum GlobalFnKeyMonitorError: LocalizedError {
     case missingAccessibilityPermission
-    case missingInputMonitoringPermission
-    case couldNotCreateEventTap
+    case couldNotCreateEventMonitor
 
     var errorDescription: String? {
         switch self {
         case .missingAccessibilityPermission:
-            return "Accessibility permission is required for global key detection and text insertion."
-        case .missingInputMonitoringPermission:
-            return "Input Monitoring permission is required to detect the Fn key globally."
-        case .couldNotCreateEventTap:
-            return "Could not create the global Fn key monitor."
+            return L10n.tr("Accessibility permission is required for global shortcut detection and text insertion.")
+        case .couldNotCreateEventMonitor:
+            return L10n.tr("Could not create the global shortcut monitor.")
         }
     }
 }

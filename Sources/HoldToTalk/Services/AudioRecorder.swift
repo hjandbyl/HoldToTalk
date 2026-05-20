@@ -11,8 +11,8 @@ final class AudioRecorder: @unchecked Sendable {
     private var recordingURL: URL?
     private var capturedFrames: AVAudioFramePosition = 0
     private var writeFailures = 0
-    private var inputFormatDescription = "Unknown"
-    private var voiceProcessingDescription = "voice processing not started"
+    private var inputFormatDescription = L10n.tr("Unknown")
+    private var voiceProcessingDescription = L10n.tr("voice processing not started")
     private var inputSampleRate: Double = 0
     private var inputChannelCount: AVAudioChannelCount = 1
     private var inputFormat: AVAudioFormat?
@@ -28,8 +28,8 @@ final class AudioRecorder: @unchecked Sendable {
     var captureSummary: String {
         stateQueue.sync {
             let elapsed = startedAt.map { Date().timeIntervalSince($0) } ?? 0
-            return String(
-                format: "held %.2fs, captured %.2fs, write failures %d, format %@, %@",
+            return L10n.tr(
+                "held %.2fs, captured %.2fs, write failures %d, format %@, %@",
                 elapsed,
                 capturedDuration,
                 writeFailures,
@@ -127,7 +127,7 @@ final class AudioRecorder: @unchecked Sendable {
         }
 
         stateQueue.sync {
-            voiceProcessingDescription = "system mic mode \(Self.microphoneModeDescription())"
+            voiceProcessingDescription = L10n.tr("system mic mode %@", Self.microphoneModeDescription())
         }
     }
 
@@ -294,17 +294,17 @@ final class AudioRecorder: @unchecked Sendable {
         if #available(macOS 12.0, *) {
             switch AVCaptureDevice.activeMicrophoneMode {
             case .standard:
-                return "Standard"
+                return L10n.tr("Standard")
             case .wideSpectrum:
-                return "Wide Spectrum"
+                return L10n.tr("Wide Spectrum")
             case .voiceIsolation:
-                return "Voice Isolation"
+                return L10n.tr("Voice Isolation")
             @unknown default:
-                return "Unknown"
+                return L10n.tr("Unknown")
             }
         }
 
-        return "Unavailable"
+        return L10n.tr("Unavailable")
     }
 }
 
@@ -315,9 +315,9 @@ enum AudioRecorderError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noInputDevice:
-            return "No microphone input device is available."
+            return L10n.tr("No microphone input device is available.")
         case .couldNotCreateOutputFormat:
-            return "Could not create the 16 kHz WAV recording format."
+            return L10n.tr("Could not create the 16 kHz WAV recording format.")
         }
     }
 }

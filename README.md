@@ -4,10 +4,10 @@ Hold Fn, speak, release Fn, and the recognized text is pasted into the currently
 
 ## Setup
 
-Download the sherpa-onnx macOS runtime and the SenseVoice 2025-09-09 ONNX model once:
+Download the sherpa-onnx macOS runtime once:
 
 ```bash
-./scripts/setup_sherpa_onnx.sh
+./script/setup_sherpa_onnx.sh
 ```
 
 Then build and run the macOS app:
@@ -16,7 +16,27 @@ Then build and run the macOS app:
 ./script/build_and_run.sh
 ```
 
-The app defaults to `Volcengine Cloud` for streaming recognition and keeps `sherpa-onnx Local` as an offline fallback.
+Create an ad-hoc signed release app bundle:
+
+```bash
+./script/build_and_run.sh --adhoc
+```
+
+Ad-hoc packages are built with SwiftPM release mode and written to `dist-adhoc/HoldToTalk.app`. Development builds still use `dist/HoldToTalk.app`.
+
+The app defaults to `Doubao Streaming Speech Recognition 2.0` for streaming recognition and keeps `sherpa-onnx Local` as an offline fallback. Local ASR models are not bundled in the app package; choose and download a SenseVoice or FireRedASR model from the Recognition panel.
+
+## Local Code Signing
+
+Accessibility permission is tied to the app's code signing identity. Ad-hoc signing changes the code identity on rebuild, so macOS may require Accessibility permission again after each compile.
+
+For local development, use a stable code signing certificate:
+
+```bash
+HOLDTOTALK_SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" ./script/build_and_run.sh
+```
+
+If `HOLDTOTALK_SIGN_IDENTITY` is not set, the build script will try to use the first available `HoldToTalk Local Code Signing`, `Apple Development`, `Mac Developer`, or `Developer ID Application` identity. If none exists, it falls back to ad-hoc signing and Accessibility permission may be reset on rebuild.
 
 ## Permissions
 
@@ -24,23 +44,15 @@ Grant these macOS permissions to `HoldToTalk.app` when prompted:
 
 - Microphone
 - Accessibility
-- Input Monitoring
 
-Accessibility is needed for text insertion. Input Monitoring is needed for global Fn key detection.
+Accessibility is needed for global Fn key detection and text insertion.
 
 ## Runtime Configuration
 
-Optional environment variables:
+Set the Doubao Streaming Speech Recognition 2.0 API key in the app window. The key is saved to the macOS Keychain and is not stored in source code.
 
-- `VOLCENGINE_API_KEY`: cloud ASR API key for local debugging
-- `SHERPA_ONNX_SENSEVOICE_DIR`: local SenseVoice ONNX model directory
-- `SHERPA_ONNX_SENSEVOICE_MODEL`: explicit path to `model.int8.onnx` or `model.onnx`
-- `SHERPA_ONNX_SENSEVOICE_TOKENS`: explicit path to `tokens.txt`
+Downloaded local models are stored under the user's Application Support directory at `HoldToTalk/models`. Development builds also detect matching model folders under the repository's root `models` directory.
 
-By default the cloud key is read from this macOS Keychain entry:
+`Doubao Streaming Speech Recognition 2.0` streams partial text while recording and returns a final result after release. `sherpa-onnx Local` still transcribes from the full recording after release.
 
-```bash
-security add-generic-password -U -s HoldToTalk.volcengine -a api-key -w "$VOLCENGINE_API_KEY"
-```
-
-`Volcengine Cloud` streams partial text while recording and returns a final result after release. `sherpa-onnx Local` still transcribes from the full recording after release.
+SenseVoice local models use `use_itn=1` so Chinese output can include inverse text normalization and punctuation when supported by the selected model.

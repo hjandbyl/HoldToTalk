@@ -4,39 +4,44 @@ import Darwin
 import Foundation
 
 actor SherpaOnnxClient {
-    private var recognizers: [String: OfflineSenseVoiceRecognizer] = [:]
+    private var recognizers: [String: OfflineLocalSpeechRecognizer] = [:]
 
-    func preload() async throws {
-        _ = try recognizer(language: "auto")
+    func preload(model: LocalSpeechModel) async throws {
+        _ = try recognizer(language: "auto", model: model)
     }
 
-    func transcribe(audioURL: URL, language: String) async throws -> String {
+    func transcribe(audioURL: URL, language: String, model: LocalSpeechModel) async throws -> String {
         let audio = try loadMonoSamples(from: audioURL)
         guard !audio.samples.isEmpty else { return "" }
 
-        let recognizer = try recognizer(language: language)
+        let recognizer = try recognizer(language: language, model: model)
         return try recognizer.transcribe(samples: audio.samples, sampleRate: audio.sampleRate)
     }
 
-    private func recognizer(language: String) throws -> OfflineSenseVoiceRecognizer {
+    func clearCache() {
+        recognizers.removeAll(keepingCapacity: true)
+    }
+
+    private func recognizer(language: String, model: LocalSpeechModel) throws -> OfflineLocalSpeechRecognizer {
         let normalizedLanguage = normalizeLanguage(language)
-        if let recognizer = recognizers[normalizedLanguage] {
+        let cacheKey = "\(model.id):\(normalizedLanguage)"
+        if let recognizer = recognizers[cacheKey] {
             return recognizer
         }
 
-        let modelFiles = try modelFiles()
-        let recognizer = try OfflineSenseVoiceRecognizer(
-            modelURL: modelFiles.model,
-            tokensURL: modelFiles.tokens,
+        let modelDirectory = try modelDirectory(for: model)
+        let recognizer = try OfflineLocalSpeechRecognizer(
+            model: model,
+            modelDirectory: modelDirectory,
             language: normalizedLanguage
         )
-        recognizers[normalizedLanguage] = recognizer
+        recognizers[cacheKey] = recognizer
         return recognizer
     }
 
     private func normalizeLanguage(_ language: String) -> String {
         switch language {
-        case "", "mixed_zh_en":
+        case "":
             return "auto"
         default:
             return language
@@ -79,96 +84,52 @@ actor SherpaOnnxClient {
         return (samples, Int32(inputFormat.sampleRate))
     }
 
-    private func modelFiles() throws -> (model: URL, tokens: URL) {
-        let fileManager = FileManager.default
-        let environment = ProcessInfo.processInfo.environment
-
-        if
-            let modelPath = environment["SHERPA_ONNX_SENSEVOICE_MODEL"],
-            let tokensPath = environment["SHERPA_ONNX_SENSEVOICE_TOKENS"],
-            fileManager.fileExists(atPath: modelPath),
-            fileManager.fileExists(atPath: tokensPath)
-        {
-            return (URL(fileURLWithPath: modelPath), URL(fileURLWithPath: tokensPath))
+    private func modelDirectory(for model: LocalSpeechModel) throws -> URL {
+        guard let directory = LocalSpeechModelStore.installedDirectory(for: model) else {
+            throw SherpaOnnxClientError.modelNotFound(model.displayTitle)
         }
 
-        let modelDirectory: URL? =
-            environment["SHERPA_ONNX_SENSEVOICE_DIR"].map(URL.init(fileURLWithPath:))
-            ?? bundledModelDirectory()
-            ?? projectRootURL()?
-                .appendingPathComponent("models")
-                .appendingPathComponent(Self.defaultModelDirectoryName)
-
-        guard let modelDirectory else {
-            throw SherpaOnnxClientError.modelNotFound
-        }
-
-        let int8Model = modelDirectory.appendingPathComponent("model.int8.onnx")
-        let fp32Model = modelDirectory.appendingPathComponent("model.onnx")
-        let tokens = modelDirectory.appendingPathComponent("tokens.txt")
-        let model = fileManager.fileExists(atPath: int8Model.path) ? int8Model : fp32Model
-
-        guard fileManager.fileExists(atPath: model.path), fileManager.fileExists(atPath: tokens.path) else {
-            throw SherpaOnnxClientError.modelNotFound
-        }
-
-        return (model, tokens)
+        return directory
     }
-
-    private func bundledModelDirectory() -> URL? {
-        guard let resourcesURL = Bundle.main.resourceURL else { return nil }
-        let url = resourcesURL.appendingPathComponent("models").appendingPathComponent(Self.defaultModelDirectoryName)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
-    }
-
-    private func projectRootURL() -> URL? {
-        let bundleURL = Bundle.main.bundleURL
-
-        if bundleURL.pathExtension == "app" {
-            return bundleURL.deletingLastPathComponent().deletingLastPathComponent()
-        }
-
-        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-    }
-
-    private static let defaultModelDirectoryName = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09"
 }
 
-private final class OfflineSenseVoiceRecognizer: @unchecked Sendable {
+private final class OfflineLocalSpeechRecognizer: @unchecked Sendable {
     private let recognizer: OpaquePointer
-    private let providerCString: CStringHandle
-    private let tokensCString: CStringHandle
-    private let modelCString: CStringHandle
-    private let languageCString: CStringHandle
-    private let decodingMethodCString: CStringHandle
+    private let cStrings: [CStringHandle]
 
-    init(modelURL: URL, tokensURL: URL, language: String) throws {
-        let providerCString = try CStringHandle("cpu")
-        let tokensCString = try CStringHandle(tokensURL.path)
-        let modelCString = try CStringHandle(modelURL.path)
-        let languageCString = try CStringHandle(language)
-        let decodingMethodCString = try CStringHandle("greedy_search")
+    init(model: LocalSpeechModel, modelDirectory: URL, language: String) throws {
+        var cStrings: [CStringHandle] = []
+        func cString(_ string: String) throws -> UnsafePointer<CChar> {
+            let handle = try CStringHandle(string)
+            cStrings.append(handle)
+            return handle.unsafePointer
+        }
 
         var config = SherpaOnnxOfflineRecognizerConfig()
         config.feat_config.sample_rate = 16_000
         config.feat_config.feature_dim = 80
         config.model_config.num_threads = 4
-        config.model_config.provider = providerCString.unsafePointer
-        config.model_config.tokens = tokensCString.unsafePointer
-        config.model_config.sense_voice.model = modelCString.unsafePointer
-        config.model_config.sense_voice.language = languageCString.unsafePointer
-        config.model_config.sense_voice.use_itn = 1
-        config.decoding_method = decodingMethodCString.unsafePointer
+        config.model_config.provider = try cString("cpu")
+        config.model_config.tokens = try cString(modelDirectory.appendingPathComponent("tokens.txt").path)
+        config.decoding_method = try cString("greedy_search")
+
+        switch model.kind {
+        case .senseVoice:
+            config.model_config.sense_voice.model = try cString(modelDirectory.appendingPathComponent("model.int8.onnx").path)
+            config.model_config.sense_voice.language = try cString(language)
+            config.model_config.sense_voice.use_itn = 1
+        case .fireRedAsr:
+            config.model_config.fire_red_asr.encoder = try cString(modelDirectory.appendingPathComponent("encoder.int8.onnx").path)
+            config.model_config.fire_red_asr.decoder = try cString(modelDirectory.appendingPathComponent("decoder.int8.onnx").path)
+        case .fireRedAsrCtc:
+            config.model_config.fire_red_asr_ctc.model = try cString(modelDirectory.appendingPathComponent("model.int8.onnx").path)
+        }
 
         guard let recognizer = SherpaOnnxCreateOfflineRecognizer(&config) else {
             throw SherpaOnnxClientError.couldNotCreateRecognizer
         }
 
-        self.providerCString = providerCString
-        self.tokensCString = tokensCString
-        self.modelCString = modelCString
-        self.languageCString = languageCString
-        self.decodingMethodCString = decodingMethodCString
+        self.cStrings = cStrings
         self.recognizer = recognizer
     }
 
@@ -222,7 +183,7 @@ private final class CStringHandle: @unchecked Sendable {
 }
 
 enum SherpaOnnxClientError: LocalizedError {
-    case modelNotFound
+    case modelNotFound(String)
     case couldNotCreateRecognizer
     case couldNotCreateCString
     case couldNotCreateStream
@@ -232,20 +193,20 @@ enum SherpaOnnxClientError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .modelNotFound:
-            return "sherpa-onnx SenseVoice model was not found. Run ./scripts/setup_sherpa_onnx.sh first."
+        case .modelNotFound(let modelName):
+            return L10n.tr("Local model %@ is not downloaded.", modelName)
         case .couldNotCreateRecognizer:
-            return "Could not create sherpa-onnx recognizer."
+            return L10n.tr("Could not create sherpa-onnx recognizer.")
         case .couldNotCreateCString:
-            return "Could not prepare sherpa-onnx recognizer configuration."
+            return L10n.tr("Could not prepare sherpa-onnx recognizer configuration.")
         case .couldNotCreateStream:
-            return "Could not create sherpa-onnx recognition stream."
+            return L10n.tr("Could not create sherpa-onnx recognition stream.")
         case .couldNotReadResult:
-            return "Could not read sherpa-onnx transcription result."
+            return L10n.tr("Could not read sherpa-onnx transcription result.")
         case .couldNotReadAudio:
-            return "Could not read the recorded audio."
+            return L10n.tr("Could not read the recorded audio.")
         case .unsupportedAudioFormat:
-            return "Unsupported recorded audio format."
+            return L10n.tr("Unsupported recorded audio format.")
         }
     }
 }

@@ -21,10 +21,10 @@ enum AudioDeviceInspector {
         )
 
         guard status == noErr, deviceID != 0 else {
-            return "Unknown"
+            return L10n.tr("Unknown")
         }
 
-        return inputDeviceName(deviceID: deviceID) ?? "Unknown"
+        return inputDeviceName(deviceID: deviceID) ?? L10n.tr("Unknown")
     }
 
     private static func inputDeviceName(deviceID: AudioDeviceID) -> String? {

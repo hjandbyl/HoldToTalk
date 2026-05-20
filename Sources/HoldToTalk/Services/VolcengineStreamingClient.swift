@@ -18,17 +18,28 @@ actor VolcengineStreamingClient {
     private var session: URLSession?
     private var delegate: WebSocketOpenDelegate?
     private var isActiveSession = false
+    private var sessionLanguage: TranscriptionLanguage?
 
-    func prepare() async throws {
-        guard webSocketTask == nil else {
+    func prepare(language: TranscriptionLanguage) async throws {
+        if webSocketTask != nil, sessionLanguage == language {
             return
         }
 
-        try await openSession(updateHandler: nil, isActive: false)
+        cancel()
+        try await openSession(language: language, updateHandler: nil, isActive: false)
     }
 
-    func start(updateHandler: @escaping @Sendable (RecognitionUpdate) -> Void) async throws {
+    func start(
+        language: TranscriptionLanguage,
+        updateHandler: @escaping @Sendable (RecognitionUpdate) -> Void
+    ) async throws {
         if webSocketTask != nil {
+            guard sessionLanguage == language else {
+                cancel()
+                try await openSession(language: language, updateHandler: updateHandler, isActive: true)
+                return
+            }
+
             guard !isActiveSession else {
                 throw VolcengineStreamingClientError.sessionAlreadyStarted
             }
@@ -41,10 +52,11 @@ actor VolcengineStreamingClient {
             return
         }
 
-        try await openSession(updateHandler: updateHandler, isActive: true)
+        try await openSession(language: language, updateHandler: updateHandler, isActive: true)
     }
 
     private func openSession(
+        language: TranscriptionLanguage,
         updateHandler: (@Sendable (RecognitionUpdate) -> Void)?,
         isActive: Bool
     ) async throws {
@@ -64,6 +76,7 @@ actor VolcengineStreamingClient {
         self.delegate = delegate
         self.webSocketTask = webSocketTask
         self.updateHandler = updateHandler
+        sessionLanguage = language
         isActiveSession = isActive
         latestText = ""
         latestDefiniteText = ""
@@ -72,7 +85,7 @@ actor VolcengineStreamingClient {
         webSocketTask.resume()
         do {
             try await delegate.waitUntilOpen()
-            try await webSocketTask.send(.data(Self.fullClientRequest()))
+            try await webSocketTask.send(.data(Self.fullClientRequest(language: language)))
         } catch {
             reset()
             throw error
@@ -159,28 +172,33 @@ actor VolcengineStreamingClient {
         didReceiveFinalResponse = false
         updateHandler = nil
         isActiveSession = false
+        sessionLanguage = nil
         session?.invalidateAndCancel()
         session = nil
         delegate = nil
     }
 
     private static func apiKey() -> String? {
-        ProcessInfo.processInfo.environment["VOLCENGINE_API_KEY"]
-            ?? KeychainSecretStore.string(service: "HoldToTalk.volcengine", account: "api-key")
+        VolcengineCredentialStore.apiKey()
     }
 
-    private static func fullClientRequest() -> Data {
+    private static func fullClientRequest(language: TranscriptionLanguage) -> Data {
+        var audio: [String: Any] = [
+            "format": "pcm",
+            "codec": "raw",
+            "rate": 16_000,
+            "bits": 16,
+            "channel": 1
+        ]
+        if let languageCode = language.volcengineLanguageCode {
+            audio["language"] = languageCode
+        }
+
         let request: [String: Any] = [
             "user": [
                 "uid": Host.current().localizedName ?? "macOS"
             ],
-            "audio": [
-                "format": "pcm",
-                "codec": "raw",
-                "rate": 16_000,
-                "bits": 16,
-                "channel": 1
-            ],
+            "audio": audio,
             "request": [
                 "model_name": "bigmodel",
                 // Direct ASR equivalent of AibotCreate StreamMode = 2:
@@ -271,7 +289,7 @@ actor VolcengineStreamingClient {
         let payload = data[offset..<(offset + payloadSize)]
 
         if messageType == 0xf {
-            let message = String(data: payload, encoding: .utf8) ?? "Unknown error."
+            let message = String(data: payload, encoding: .utf8) ?? L10n.tr("Unknown error.")
             throw VolcengineStreamingClientError.serverError(message)
         }
 
@@ -372,15 +390,15 @@ enum VolcengineStreamingClientError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingAPIKey:
-            return "Volcengine API key is missing."
+            return L10n.tr("Volcengine API key is missing.")
         case .sessionAlreadyStarted:
-            return "Volcengine streaming session is already running."
+            return L10n.tr("Volcengine streaming session is already running.")
         case .sessionNotStarted:
-            return "Volcengine streaming session has not started."
+            return L10n.tr("Volcengine streaming session has not started.")
         case .invalidResponse:
-            return "Volcengine returned an invalid streaming response."
+            return L10n.tr("Volcengine returned an invalid streaming response.")
         case .serverError(let message):
-            return "Volcengine transcription failed: \(message)"
+            return L10n.tr("Volcengine transcription failed: %@", message)
         }
     }
 }
