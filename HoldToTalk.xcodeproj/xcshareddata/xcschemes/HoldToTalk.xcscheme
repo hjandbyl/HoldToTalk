@@ -14,8 +14,8 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "20A000000000000000000007"
-               BuildableName = "HoldToTalk"
+               BlueprintIdentifier = "20A200000000000000000020"
+               BuildableName = "HoldToTalk.app"
                BlueprintName = "HoldToTalk"
                ReferencedContainer = "container:HoldToTalk.xcodeproj">
             </BuildableReference>
@@ -40,10 +40,16 @@
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES"
       queueDebuggingEnableBacktraceRecording = "Yes">
-      <PathRunnable
-         runnableDebuggingMode = "0"
-         FilePath = "/Users/hanjian/Desktop/HoldToTalk/dist/HoldToTalk.app">
-      </PathRunnable>
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "20A200000000000000000020"
+            BuildableName = "HoldToTalk.app"
+            BlueprintName = "HoldToTalk"
+            ReferencedContainer = "container:HoldToTalk.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -51,10 +57,16 @@
       savedToolIdentifier = ""
       useCustomWorkingDirectory = "NO"
       debugDocumentVersioning = "YES">
-      <PathRunnable
-         runnableDebuggingMode = "0"
-         FilePath = "/Users/hanjian/Desktop/HoldToTalk/dist/HoldToTalk.app">
-      </PathRunnable>
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "20A200000000000000000020"
+            BuildableName = "HoldToTalk.app"
+            BlueprintName = "HoldToTalk"
+            ReferencedContainer = "container:HoldToTalk.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">

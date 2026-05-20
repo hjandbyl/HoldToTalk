@@ -14,12 +14,14 @@ let package = Package(
         .executableTarget(
             name: "HoldToTalk",
             dependencies: ["CSherpaOnnx"],
+            path: "HoldToTalk",
             resources: [
-                .process("Resources")
+                .process("Assets.xcassets")
             ]
         ),
         .target(
             name: "CSherpaOnnx",
+            path: "CSherpaOnnx",
             publicHeadersPath: "include",
             linkerSettings: [
                 .linkedLibrary("c++"),

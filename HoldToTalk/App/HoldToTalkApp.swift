@@ -92,8 +92,7 @@ private enum MenuBarIconProvider {
             return cached
         }
 
-        if let url = Bundle.main.url(forResource: name, withExtension: "png"),
-           let image = NSImage(contentsOf: url) {
+        if let image = NSImage(named: name) ?? resourceImage(named: name) {
             image.isTemplate = true
             image.size = NSSize(width: 18, height: 18)
             cache[name] = image
@@ -101,6 +100,14 @@ private enum MenuBarIconProvider {
         }
 
         return nil
+    }
+
+    private static func resourceImage(named name: String) -> NSImage? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "png") else {
+            return nil
+        }
+
+        return NSImage(contentsOf: url)
     }
 }
 

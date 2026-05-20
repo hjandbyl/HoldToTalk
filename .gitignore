@@ -8,3 +8,4 @@ dist/
 dist-adhoc/
 *.xcuserstate
 .DS_Store
+.vscode

@@ -45,7 +45,7 @@ APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_DSYM="$DIST_DIR/$APP_NAME.app.dSYM"
-RESOURCE_BUNDLE_NAME="HoldToTalk_HoldToTalk.bundle"
+ACTOOL_PARTIAL_INFO_PLIST="$DIST_DIR/assetcatalog_generated_info.plist"
 RUNTIME_DIR="$ROOT_DIR/ThirdParty/sherpa-onnx-v1.13.0-onnxruntime-1.24.4-osx-arm64-shared"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
@@ -71,7 +71,6 @@ fi
 swift build "${SWIFT_BUILD_ARGS[@]}"
 BUILD_BIN_PATH="$(swift build "${SWIFT_BUILD_ARGS[@]}" --show-bin-path)"
 BUILD_BINARY="$BUILD_BIN_PATH/$APP_NAME"
-BUILD_RESOURCE_BUNDLE="$BUILD_BIN_PATH/$RESOURCE_BUNDLE_NAME"
 
 rm -rf "$APP_BUNDLE"
 rm -rf "$APP_DSYM"
@@ -80,12 +79,18 @@ cp "$BUILD_BINARY" "$APP_BINARY"
 if [[ -d "$BUILD_BINARY.dSYM" ]]; then
   cp -R "$BUILD_BINARY.dSYM" "$APP_DSYM"
 fi
-if [[ -d "$BUILD_RESOURCE_BUNDLE" ]]; then
-  cp -R "$BUILD_RESOURCE_BUNDLE" "$APP_RESOURCES/$RESOURCE_BUNDLE_NAME"
-fi
-if [[ -d "$ROOT_DIR/Sources/HoldToTalk/Resources" ]]; then
-  cp -R "$ROOT_DIR/Sources/HoldToTalk/Resources/." "$APP_RESOURCES/"
-fi
+xcrun actool "$ROOT_DIR/HoldToTalk/Assets.xcassets" \
+  --compile "$APP_RESOURCES" \
+  --platform macosx \
+  --minimum-deployment-target "$MIN_SYSTEM_VERSION" \
+  --target-device mac \
+  --app-icon AppIcon \
+  --accent-color AccentColor \
+  --bundle-identifier "$BUNDLE_ID" \
+  --development-region en \
+  --output-partial-info-plist "$ACTOOL_PARTIAL_INFO_PLIST" \
+  >/dev/null
+rm -f "$ACTOOL_PARTIAL_INFO_PLIST"
 cp "$RUNTIME_DIR/lib/libsherpa-onnx-c-api.dylib" "$APP_FRAMEWORKS/"
 cp "$RUNTIME_DIR/lib/libonnxruntime.1.24.4.dylib" "$APP_FRAMEWORKS/"
 cp "$RUNTIME_DIR/lib/libonnxruntime.dylib" "$APP_FRAMEWORKS/" 2>/dev/null || true
@@ -101,6 +106,8 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundleIdentifier</key>
   <string>$BUNDLE_ID</string>
   <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>CFBundleIconName</key>
   <string>AppIcon</string>
   <key>CFBundleName</key>
   <string>$APP_NAME</string>
@@ -118,6 +125,8 @@ cat >"$INFO_PLIST" <<PLIST
   <true/>
   <key>NSHumanReadableCopyright</key>
   <string>Local development build</string>
+  <key>NSAccentColorName</key>
+  <string>AccentColor</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>HoldToTalk records your voice while Fn is held to transcribe it into text.</string>
   <key>NSPrincipalClass</key>

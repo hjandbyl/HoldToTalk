@@ -2,11 +2,11 @@ import AppKit
 import Foundation
 
 let rootURL = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? FileManager.default.currentDirectoryPath)
-let resourcesURL = rootURL.appendingPathComponent("Sources/HoldToTalk/Resources", isDirectory: true)
-let iconsetURL = resourcesURL.appendingPathComponent("AppIcon.iconset", isDirectory: true)
+let assetsURL = rootURL.appendingPathComponent("HoldToTalk/Assets.xcassets", isDirectory: true)
+let appIconURL = assetsURL.appendingPathComponent("AppIcon.appiconset", isDirectory: true)
 
-try FileManager.default.createDirectory(at: resourcesURL, withIntermediateDirectories: true)
-try FileManager.default.createDirectory(at: iconsetURL, withIntermediateDirectories: true)
+try FileManager.default.createDirectory(at: assetsURL, withIntermediateDirectories: true)
+try FileManager.default.createDirectory(at: appIconURL, withIntermediateDirectories: true)
 
 extension NSColor {
     convenience init(hex: UInt32, alpha: CGFloat = 1) {
@@ -195,9 +195,6 @@ private func drawMenuBarIcon(kind: String, in rect: NSRect) {
     }
 }
 
-let masterIcon = image(size: 1024, draw: drawAppIcon)
-try writePNG(masterIcon, to: resourcesURL.appendingPathComponent("AppIcon.png"))
-
 let iconSizes: [(String, Int)] = [
     ("icon_16x16.png", 16),
     ("icon_16x16@2x.png", 32),
@@ -212,31 +209,14 @@ let iconSizes: [(String, Int)] = [
 ]
 
 for (filename, size) in iconSizes {
-    try writePNG(image(size: size, draw: drawAppIcon), to: iconsetURL.appendingPathComponent(filename))
+    try writePNG(image(size: size, draw: drawAppIcon), to: appIconURL.appendingPathComponent(filename))
 }
 
 for kind in ["Idle", "Recording", "Transcribing"] {
+    let imagesetURL = assetsURL.appendingPathComponent("MenuBarIcon\(kind)Template.imageset", isDirectory: true)
+    try FileManager.default.createDirectory(at: imagesetURL, withIntermediateDirectories: true)
     try writePNG(
         image(size: 36) { drawMenuBarIcon(kind: kind, in: $0) },
-        to: resourcesURL.appendingPathComponent("MenuBarIcon\(kind)Template.png")
-    )
-}
-
-let iconutil = Process()
-iconutil.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
-iconutil.arguments = [
-    "-c",
-    "icns",
-    iconsetURL.path,
-    "-o",
-    resourcesURL.appendingPathComponent("AppIcon.icns").path
-]
-try iconutil.run()
-iconutil.waitUntilExit()
-if iconutil.terminationStatus != 0 {
-    throw NSError(
-        domain: "IconGeneration",
-        code: Int(iconutil.terminationStatus),
-        userInfo: [NSLocalizedDescriptionKey: "iconutil failed to generate AppIcon.icns"]
+        to: imagesetURL.appendingPathComponent("MenuBarIcon\(kind)Template.png")
     )
 }
