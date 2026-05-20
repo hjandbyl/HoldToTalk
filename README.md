@@ -28,11 +28,7 @@ Create an ad-hoc signed release app bundle:
 
 Ad-hoc packages are built with SwiftPM release mode and written to `dist-adhoc/HoldToTalk.app`. Development builds use `dist/HoldToTalk.app`.
 
-You can override the app version used in the generated bundle:
-
-```bash
-HOLDTOTALK_VERSION=0.1.2 HOLDTOTALK_BUILD_NUMBER=2 ./script/build_and_run.sh --adhoc
-```
+The default bundle version is read from the root `VERSION` file. `HOLDTOTALK_VERSION` and `HOLDTOTALK_BUILD_NUMBER` can override packaging metadata when needed.
 
 ## Permissions
 

@@ -1,8 +1,7 @@
 import Foundation
 
 enum AppVersion {
-    static let fallbackShortVersion = "0.1.2"
-    static let fallbackBuildNumber = "2"
+    private static let fallbackVersionString = "Development"
 
     static var displayText: String {
         L10n.tr("Version %@", versionString)
@@ -11,10 +10,10 @@ enum AppVersion {
     private static var versionString: String {
         let info = Bundle.main.infoDictionary
         let shortVersion = info?["CFBundleShortVersionString"] as? String
-        let buildNumber = nonEmpty(info?["CFBundleVersion"] as? String) ?? fallbackBuildNumber
-        let version = nonEmpty(shortVersion) ?? fallbackShortVersion
+        let buildNumber = nonEmpty(info?["CFBundleVersion"] as? String)
+        let version = nonEmpty(shortVersion) ?? fallbackVersionString
 
-        guard buildNumber != version else {
+        guard let buildNumber, buildNumber != version else {
             return version
         }
 

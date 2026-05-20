@@ -17,10 +17,19 @@ esac
 APP_NAME="HoldToTalk"
 BUNDLE_ID="com.local.HoldToTalk"
 MIN_SYSTEM_VERSION="14.0"
-APP_VERSION="${HOLDTOTALK_VERSION:-0.1.2}"
-APP_BUILD_NUMBER="${HOLDTOTALK_BUILD_NUMBER:-2}"
-
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VERSION_FILE="$ROOT_DIR/VERSION"
+DEFAULT_APP_VERSION="$(tr -d '[:space:]' < "$VERSION_FILE")"
+if [[ -z "$DEFAULT_APP_VERSION" ]]; then
+  echo "error: VERSION is empty." >&2
+  exit 1
+fi
+DEFAULT_BUILD_NUMBER="$(
+  git -C "$ROOT_DIR" rev-list --count HEAD 2>/dev/null || printf '1'
+)"
+APP_VERSION="${HOLDTOTALK_VERSION:-$DEFAULT_APP_VERSION}"
+APP_BUILD_NUMBER="${HOLDTOTALK_BUILD_NUMBER:-$DEFAULT_BUILD_NUMBER}"
+
 if [[ "$SIGNING_MODE" == "adhoc" ]]; then
   DIST_DIR="$ROOT_DIR/dist-adhoc"
   BUILD_CONFIGURATION="release"
