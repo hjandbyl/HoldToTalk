@@ -1,20 +1,24 @@
 # HoldToTalk
 
-Hold Fn, speak, release Fn, and the recognized text is pasted into the currently focused macOS app.
+Hold a shortcut, speak, release it, and the recognized text is pasted into the currently focused macOS app.
 
-## Setup
+## Download
 
-Download the sherpa-onnx macOS runtime once:
+Download the latest macOS arm64 build from GitHub Releases:
 
-```bash
-./script/setup_sherpa_onnx.sh
-```
+- https://github.com/hjandbyl/HoldToTalk/releases
 
-Then build and run the macOS app:
+The release build is ad-hoc signed. On first launch, macOS may require you to approve opening the app and grant the permissions listed below.
+
+## Build from Source
+
+Build and run the macOS app:
 
 ```bash
 ./script/build_and_run.sh
 ```
+
+The build script automatically downloads the sherpa-onnx macOS runtime into `ThirdParty/` if it is missing.
 
 Create an ad-hoc signed release app bundle:
 
@@ -22,9 +26,35 @@ Create an ad-hoc signed release app bundle:
 ./script/build_and_run.sh --adhoc
 ```
 
-Ad-hoc packages are built with SwiftPM release mode and written to `dist-adhoc/HoldToTalk.app`. Development builds still use `dist/HoldToTalk.app`.
+Ad-hoc packages are built with SwiftPM release mode and written to `dist-adhoc/HoldToTalk.app`. Development builds use `dist/HoldToTalk.app`.
 
-The app defaults to `Doubao Streaming Speech Recognition 2.0` for streaming recognition and keeps `sherpa-onnx Local` as an offline fallback. Local ASR models are not bundled in the app package; choose and download a SenseVoice or FireRedASR model from the Recognition panel.
+You can override the app version used in the generated bundle:
+
+```bash
+HOLDTOTALK_VERSION=0.1.1 HOLDTOTALK_BUILD_NUMBER=1 ./script/build_and_run.sh --adhoc
+```
+
+## Permissions
+
+Grant these macOS permissions to `HoldToTalk.app` when prompted:
+
+- Microphone
+- Accessibility
+
+Accessibility is needed for global shortcut detection and text insertion into the focused app.
+
+## Recognition
+
+HoldToTalk supports two recognition engines:
+
+- `Doubao Streaming Speech Recognition 2.0`: cloud streaming recognition with partial text while recording and a final result after release.
+- `sherpa-onnx Local`: offline recognition from the full recording after release.
+
+Set the Doubao Streaming Speech Recognition 2.0 API key in the app window. The key is saved to the macOS Keychain and is not stored in source code.
+
+Local ASR models are not bundled in the app package. Choose and download a SenseVoice or FireRedASR model from the Recognition panel. Downloaded local models are stored under the user's Application Support directory at `HoldToTalk/models`; development builds also detect matching model folders under the repository's root `models` directory.
+
+SenseVoice local models use `use_itn=1` so Chinese output can include inverse text normalization and punctuation when supported by the selected model.
 
 ## Local Code Signing
 
@@ -36,26 +66,13 @@ For local development, use a stable code signing certificate:
 HOLDTOTALK_SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" ./script/build_and_run.sh
 ```
 
-If `HOLDTOTALK_SIGN_IDENTITY` is not set, the build script will try to use the first available `HoldToTalk Local Code Signing`, `Apple Development`, `Mac Developer`, or `Developer ID Application` identity. If none exists, it falls back to ad-hoc signing and Accessibility permission may be reset on rebuild.
+If `HOLDTOTALK_SIGN_IDENTITY` is not set, the build script will try to use the first available `HoldToTalk Local Code Signing`, `Apple Development`, `Mac Developer`, or `Developer ID Application` identity. If none exists, run `./script/build_and_run.sh --adhoc` to create an ad-hoc package.
 
-## Permissions
+## Requirements
 
-Grant these macOS permissions to `HoldToTalk.app` when prompted:
-
-- Microphone
-- Accessibility
-
-Accessibility is needed for global Fn key detection and text insertion.
-
-## Runtime Configuration
-
-Set the Doubao Streaming Speech Recognition 2.0 API key in the app window. The key is saved to the macOS Keychain and is not stored in source code.
-
-Downloaded local models are stored under the user's Application Support directory at `HoldToTalk/models`. Development builds also detect matching model folders under the repository's root `models` directory.
-
-`Doubao Streaming Speech Recognition 2.0` streams partial text while recording and returns a final result after release. `sherpa-onnx Local` still transcribes from the full recording after release.
-
-SenseVoice local models use `use_itn=1` so Chinese output can include inverse text normalization and punctuation when supported by the selected model.
+- macOS 14 or later
+- Apple silicon Mac for the current arm64 runtime and release build
+- Xcode command line tools when building from source
 
 ## License
 
