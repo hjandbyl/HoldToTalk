@@ -56,3 +56,7 @@ Downloaded local models are stored under the user's Application Support director
 `Doubao Streaming Speech Recognition 2.0` streams partial text while recording and returns a final result after release. `sherpa-onnx Local` still transcribes from the full recording after release.
 
 SenseVoice local models use `use_itn=1` so Chinese output can include inverse text normalization and punctuation when supported by the selected model.
+
+## License
+
+HoldToTalk is licensed under the GNU General Public License v3.0. See `LICENSE` for details.
