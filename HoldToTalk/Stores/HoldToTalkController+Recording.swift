@@ -147,9 +147,11 @@ extension HoldToTalkController {
                 case .volcengine:
                     try await cloudStartTask?.value
                     _ = await cloudSendTask?.value
-                    text = finalizedTranscriptText(
-                        from: try await cloudTranscriber.finish(finalAudio: pendingCloudAudio),
-                        shouldRemoveTrailingSentencePeriod: shouldRemoveTrailingSentencePeriod
+                    text = TextInjector.normalizedInsertionText(
+                        from: finalizedTranscriptText(
+                            from: try await cloudTranscriber.finish(finalAudio: pendingCloudAudio),
+                            shouldRemoveTrailingSentencePeriod: shouldRemoveTrailingSentencePeriod
+                        )
                     )
                     updateLastRecordingInfo(
                         audioURL: audioURL,
@@ -164,13 +166,15 @@ extension HoldToTalkController {
                         captureSummary: captureSummary,
                         inputDevice: inputDevice
                     )
-                    text = finalizedTranscriptText(
-                        from: try await transcriber.transcribe(
-                            audioURL: audioURL,
-                            language: selectedLanguage.sherpaOnnxLanguageCode,
-                            model: selectedLocalModel
-                        ),
-                        shouldRemoveTrailingSentencePeriod: shouldRemoveTrailingSentencePeriod
+                    text = TextInjector.normalizedInsertionText(
+                        from: finalizedTranscriptText(
+                            from: try await transcriber.transcribe(
+                                audioURL: audioURL,
+                                language: selectedLanguage.sherpaOnnxLanguageCode,
+                                model: selectedLocalModel
+                            ),
+                            shouldRemoveTrailingSentencePeriod: shouldRemoveTrailingSentencePeriod
+                        )
                     )
                 }
 
@@ -384,12 +388,16 @@ extension HoldToTalkController {
         _ update: VolcengineStreamingClient.RecognitionUpdate,
         sessionID: Int
     ) {
-        guard recognitionEngine == .volcengine, sessionID == activeRecognitionSessionID else { return }
+        guard
+            recognitionEngine == .volcengine,
+            sessionID == activeRecognitionSessionID,
+            isRecording
+        else {
+            return
+        }
 
         liveTranscript = update.text
-        if isRecording {
-            statusMessage = update.isDefinite ? L10n.tr("Recording. Cloud finalizing segment...") : L10n.tr("Recording with cloud recognition...")
-        }
+        statusMessage = update.isDefinite ? L10n.tr("Recording. Cloud finalizing segment...") : L10n.tr("Recording with cloud recognition...")
     }
 
 }

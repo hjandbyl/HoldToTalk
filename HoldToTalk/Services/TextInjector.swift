@@ -2,8 +2,12 @@ import AppKit
 import Foundation
 
 final class TextInjector {
+    static func normalizedInsertionText(from text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     func insert(_ text: String, targetApplication: NSRunningApplication?) {
-        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedText = Self.normalizedInsertionText(from: text)
         guard !trimmedText.isEmpty else { return }
 
         if let targetApplication, !targetApplication.isTerminated {
