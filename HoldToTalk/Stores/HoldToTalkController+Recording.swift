@@ -41,7 +41,7 @@ extension HoldToTalkController {
             overlayHideTask = nil
             recordingTrigger = trigger
             liveTranscript = ""
-            inputLevel = 0
+            resetInputAnalysis()
             recordingStartedAt = Date()
             isRecording = true
             statusMessage = trigger == Self.manualRecordingTrigger ? L10n.tr("Manual recording...") : L10n.tr("Recording while %@ is held.", trigger)
@@ -58,15 +58,15 @@ extension HoldToTalkController {
                     Task { @MainActor in
                         self?.handleCloudAudioChunk(chunk)
                     }
-                } levelHandler: { [weak self] level in
+                } inputAnalysisHandler: { [weak self] analysis in
                     Task { @MainActor in
-                        self?.handleInputLevel(level)
+                        self?.handleInputAnalysis(analysis)
                     }
                 }
             } else {
-                currentRecordingURL = try recorder.start(levelHandler: { [weak self] level in
+                currentRecordingURL = try recorder.start(inputAnalysisHandler: { [weak self] analysis in
                     Task { @MainActor in
-                        self?.handleInputLevel(level)
+                        self?.handleInputAnalysis(analysis)
                     }
                 })
             }
@@ -96,7 +96,7 @@ extension HoldToTalkController {
         recordingTargetApplication = nil
         recordingStartedAt = nil
         isRecording = false
-        inputLevel = 0
+        resetInputAnalysis()
 
         guard let audioURL else {
             cancelFnTurnWithoutTranscribing(
@@ -235,7 +235,7 @@ extension HoldToTalkController {
         overlayHideTask = nil
         transcriptionOverlay.hide()
         liveTranscript = ""
-        inputLevel = 0
+        resetInputAnalysis()
 
         if selectedEngine.isCloud {
             activeRecognitionSessionID += 1
@@ -404,17 +404,37 @@ extension HoldToTalkController {
         }
     }
 
-    func handleInputLevel(_ level: Double) {
+    func handleInputAnalysis(_ analysis: AudioInputAnalysis) {
         guard isRecording else {
-            inputLevel = 0
+            resetInputAnalysis()
             return
         }
 
-        let clampedLevel = min(1, max(0, level))
+        let clampedLevel = min(1, max(0, analysis.level))
         let attack = 0.65
         let release = 0.24
         let smoothing = clampedLevel > inputLevel ? attack : release
         inputLevel = inputLevel * (1 - smoothing) + clampedLevel * smoothing
+
+        inputSpectrum = smoothedSpectrum(from: analysis.spectrum)
+    }
+
+    func resetInputAnalysis() {
+        inputLevel = 0
+        inputSpectrum = Array(repeating: 0, count: AudioRecorder.spectrumBandCount)
+    }
+
+    func smoothedSpectrum(from spectrum: [Double]) -> [Double] {
+        guard !spectrum.isEmpty else {
+            return Array(repeating: 0, count: AudioRecorder.spectrumBandCount)
+        }
+
+        return (0..<AudioRecorder.spectrumBandCount).map { index in
+            let incoming = min(1, max(0, index < spectrum.count ? spectrum[index] : 0))
+            let current = index < inputSpectrum.count ? inputSpectrum[index] : 0
+            let smoothing = incoming > current ? 0.72 : 0.30
+            return current * (1 - smoothing) + incoming * smoothing
+        }
     }
 
     func flushBufferedCloudChunks() {

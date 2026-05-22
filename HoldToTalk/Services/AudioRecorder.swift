@@ -1,11 +1,18 @@
 import AVFoundation
+import Accelerate
 import Foundation
+
+struct AudioInputAnalysis: Sendable {
+    let level: Double
+    let spectrum: [Double]
+}
 
 final class AudioRecorder: @unchecked Sendable {
     typealias StreamingChunkHandler = @Sendable (Data) -> Void
-    typealias LevelHandler = @Sendable (Double) -> Void
+    typealias InputAnalysisHandler = @Sendable (AudioInputAnalysis) -> Void
 
     private let stateQueue = DispatchQueue(label: "HoldToTalk.AudioRecorder.state")
+    private let spectrumAnalyzer = AudioSpectrumAnalyzer()
     private var engine: AVAudioEngine?
     private var audioFile: AVAudioFile?
     private var recordingURL: URL?
@@ -20,10 +27,11 @@ final class AudioRecorder: @unchecked Sendable {
     private var streamingConverter: AVAudioConverter?
     private var streamingOutputFormat: AVAudioFormat?
     private var streamingChunkHandler: StreamingChunkHandler?
-    private var levelHandler: LevelHandler?
+    private var inputAnalysisHandler: InputAnalysisHandler?
     private var pendingStreamingAudio = Data()
 
     private static let streamingChunkByteCount = 6_400
+    static let spectrumBandCount = 25
 
     var captureSummary: String {
         stateQueue.sync {
@@ -55,7 +63,7 @@ final class AudioRecorder: @unchecked Sendable {
 
     func start(
         streamingChunkHandler: StreamingChunkHandler? = nil,
-        levelHandler: LevelHandler? = nil
+        inputAnalysisHandler: InputAnalysisHandler? = nil
     ) throws -> URL {
         try prepare()
 
@@ -84,7 +92,7 @@ final class AudioRecorder: @unchecked Sendable {
             writeFailures = 0
             startedAt = Date()
             self.streamingChunkHandler = streamingChunkHandler
-            self.levelHandler = levelHandler
+            self.inputAnalysisHandler = inputAnalysisHandler
             pendingStreamingAudio.removeAll(keepingCapacity: true)
             if streamingChunkHandler != nil {
                 configureStreamingConverterLocked(inputFormat: inputFormat)
@@ -137,7 +145,7 @@ final class AudioRecorder: @unchecked Sendable {
             audioFile = nil
             recordingURL = nil
             streamingChunkHandler = nil
-            levelHandler = nil
+            inputAnalysisHandler = nil
             streamingConverter = nil
             streamingOutputFormat = nil
             let runningEngine = engine
@@ -162,6 +170,7 @@ final class AudioRecorder: @unchecked Sendable {
         guard buffer.frameLength > 0 else { return }
 
         let level = Self.audioLevel(from: buffer)
+        let spectrum = spectrumAnalyzer.spectrum(from: buffer)
 
         stateQueue.sync {
             guard let audioFile else { return }
@@ -170,7 +179,7 @@ final class AudioRecorder: @unchecked Sendable {
                 try audioFile.write(from: buffer)
                 capturedFrames += AVAudioFramePosition(buffer.frameLength)
                 convertAndEmitStreamingAudioLocked(buffer)
-                levelHandler?(level)
+                inputAnalysisHandler?(AudioInputAnalysis(level: level, spectrum: spectrum))
             } catch {
                 writeFailures += 1
             }
@@ -305,6 +314,93 @@ final class AudioRecorder: @unchecked Sendable {
         }
 
         return L10n.tr("Unavailable")
+    }
+}
+
+private final class AudioSpectrumAnalyzer {
+    private let bufferSize = 2_048
+    private let sampleAmount = 200
+    private let downsampleFactor = 8
+    private let magnitudeLimit: Float = 80
+    private let setup: OpaquePointer?
+    private let window: [Float]
+
+    init() {
+        setup = vDSP_DFT_zop_CreateSetup(nil, UInt(bufferSize), .FORWARD)
+        var window = [Float](repeating: 0, count: bufferSize)
+        vDSP_hann_window(&window, UInt(bufferSize), Int32(vDSP_HANN_NORM))
+        self.window = window
+    }
+
+    deinit {
+        if let setup {
+            vDSP_DFT_DestroySetup(setup)
+        }
+    }
+
+    func spectrum(from buffer: AVAudioPCMBuffer) -> [Double] {
+        guard
+            let setup,
+            let channelData = buffer.floatChannelData?[0],
+            buffer.frameLength > 0
+        else {
+            return Self.silence
+        }
+
+        let frameCount = min(Int(buffer.frameLength), bufferSize)
+        var realIn = [Float](repeating: 0, count: bufferSize)
+        realIn.withUnsafeMutableBufferPointer { destination in
+            destination.baseAddress?.update(from: channelData, count: frameCount)
+        }
+        vDSP.multiply(realIn, window, result: &realIn)
+
+        var imagIn = [Float](repeating: 0, count: bufferSize)
+        var realOut = [Float](repeating: 0, count: bufferSize)
+        var imagOut = [Float](repeating: 0, count: bufferSize)
+        var magnitudes = [Float](repeating: 0, count: sampleAmount)
+
+        realIn.withUnsafeMutableBufferPointer { realInPtr in
+            imagIn.withUnsafeMutableBufferPointer { imagInPtr in
+                realOut.withUnsafeMutableBufferPointer { realOutPtr in
+                    imagOut.withUnsafeMutableBufferPointer { imagOutPtr in
+                        vDSP_DFT_Execute(
+                            setup,
+                            realInPtr.baseAddress!,
+                            imagInPtr.baseAddress!,
+                            realOutPtr.baseAddress!,
+                            imagOutPtr.baseAddress!
+                        )
+
+                        var complex = DSPSplitComplex(
+                            realp: realOutPtr.baseAddress!,
+                            imagp: imagOutPtr.baseAddress!
+                        )
+                        vDSP_zvabs(&complex, 1, &magnitudes, 1, UInt(sampleAmount))
+                    }
+                }
+            }
+        }
+
+        return magnitudes
+            .dropFirst(2)
+            .enumerated()
+            .compactMap { index, value -> Double? in
+                guard index.isMultiple(of: downsampleFactor) else { return nil }
+                let limited = min(max(value, 0), magnitudeLimit)
+                return Double(log1p(limited) / log1p(magnitudeLimit))
+            }
+            .prefix(AudioRecorder.spectrumBandCount)
+            .map { min(1, max(0, $0)) }
+            .paddingWithSilence(to: AudioRecorder.spectrumBandCount)
+    }
+
+    private static let silence = Array(repeating: 0.0, count: AudioRecorder.spectrumBandCount)
+}
+
+private extension Array where Element == Double {
+    func paddingWithSilence(to count: Int) -> [Double] {
+        guard self.count < count else { return Array(prefix(count)) }
+        return self + Array(repeating: 0, count: count - self.count)
     }
 }
 

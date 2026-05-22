@@ -13,6 +13,7 @@ final class HoldToTalkController: ObservableObject {
     @Published var lastTranscript = ""
     @Published var liveTranscript = ""
     @Published var inputLevel = 0.0
+    @Published var inputSpectrum = Array(repeating: 0.0, count: AudioRecorder.spectrumBandCount)
     @Published var microphoneStatusText = L10n.tr("Unknown")
     @Published var inputDeviceText = L10n.tr("Unknown")
     @Published var shortcutEventText = L10n.tr("No shortcut event yet.")

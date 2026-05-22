@@ -7,6 +7,8 @@ struct TranscriptionOverlayView: View {
 
     private let surfaceHeight: CGFloat = 60
     private let maxSurfaceWidth: CGFloat = 560
+    private let compactWaveformWidth: CGFloat = 46
+    private let waveformWidth: CGFloat = 56
 
     private var transcriptText: String {
         controller.liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -21,7 +23,7 @@ struct TranscriptionOverlayView: View {
 
         let font = NSFont.systemFont(ofSize: 17, weight: .medium)
         let textWidth = (transcriptText as NSString).size(withAttributes: [.font: font]).width
-        return min(maxSurfaceWidth, max(132, textWidth + 82))
+        return min(maxSurfaceWidth, max(158, textWidth + 112))
     }
 
     @ViewBuilder
@@ -173,8 +175,12 @@ struct TranscriptionOverlayView: View {
     }
 
     private var orbContentSurface: some View {
-        RecordingWaveform(level: controller.inputLevel, isRecording: controller.isRecording)
-            .frame(width: 32, height: 22)
+        RecordingWaveform(
+            spectrum: controller.inputSpectrum,
+            level: controller.inputLevel,
+            isRecording: controller.isRecording
+        )
+            .frame(width: compactWaveformWidth, height: 32)
             .opacity(showsWaveformInOrb ? 1 : 0)
             .scaleEffect(showsWaveformInOrb ? 1 : 0.72)
             .frame(width: surfaceHeight, height: surfaceHeight)
@@ -186,8 +192,12 @@ struct TranscriptionOverlayView: View {
                 .fill(.clear)
                 .frame(width: max(nucleusDiameter, bodyDiameter), height: max(nucleusDiameter, bodyDiameter))
 
-            RecordingWaveform(level: controller.inputLevel, isRecording: controller.isRecording)
-                .frame(width: 32, height: 22)
+            RecordingWaveform(
+                spectrum: controller.inputSpectrum,
+                level: controller.inputLevel,
+                isRecording: controller.isRecording
+            )
+                .frame(width: compactWaveformWidth, height: 32)
                 .opacity(showsWaveformInOrb ? 1 : 0)
                 .scaleEffect(showsWaveformInOrb ? 1 : 0.72)
         }
@@ -200,8 +210,12 @@ struct TranscriptionOverlayView: View {
 
     private var surfaceBody: some View {
         HStack(spacing: 14) {
-            RecordingWaveform(level: controller.inputLevel, isRecording: controller.isRecording)
-                .frame(width: 32, height: 22)
+            RecordingWaveform(
+                spectrum: controller.inputSpectrum,
+                level: controller.inputLevel,
+                isRecording: controller.isRecording
+            )
+                .frame(width: waveformWidth, height: 32)
 
             Text(transcriptText)
                 .font(.system(size: 17, weight: .medium))
@@ -233,46 +247,92 @@ final class TranscriptionOverlayPresentation: ObservableObject {
 }
 
 private struct RecordingWaveform: View {
+    let spectrum: [Double]
     let level: Double
     let isRecording: Bool
-    @State private var samples = Array(repeating: 0.0, count: 5)
-    @State private var isBreathing = false
 
-    private let barScales: [CGFloat] = [0.62, 0.86, 1.0, 0.78, 0.56]
+    private let sourceBandCount = 9
+    private let displayBarCount = 17
+    private let centerBarIndex = 8
+    private let barSpacing: CGFloat = 1.2
+    private let barEnvelope: [CGFloat] = [0.42, 0.62, 1.0, 0.78, 0.92, 0.62, 1.0, 0.78, 0.42]
 
-    var body: some View {
-        HStack(alignment: .center, spacing: 3) {
-            ForEach(Array(samples.enumerated()), id: \.offset) { index, sample in
-                let displayLevel = CGFloat(max(sample, breathingFloor(for: index)))
-                Capsule(style: .continuous)
-                    .fill(Color.red.opacity(0.30 + Double(displayLevel) * 0.52))
-                    .frame(width: 4, height: 4 + displayLevel * 18 * barScales[index])
-            }
+    private var displaySamples: [Double] {
+        guard isRecording else {
+            return Array(repeating: 0, count: displayBarCount)
         }
-        .animation(.easeOut(duration: 0.09), value: samples)
-        .onAppear {
-            samples = Array(repeating: isRecording ? min(1, max(0, level)) : 0, count: barScales.count)
-            withAnimation(.easeInOut(duration: 0.95).repeatForever(autoreverses: true)) {
-                isBreathing = true
-            }
+
+        let shaped = spectrum.map { min(1, max(0, $0)) }
+        guard !shaped.isEmpty else {
+            return Array(repeating: 0, count: displayBarCount)
         }
-        .onChange(of: level) { _, newValue in
-            let clamped = isRecording ? min(1, max(0, newValue)) : 0
-            samples.removeFirst()
-            samples.append(clamped)
+
+        let upperBound = min(shaped.count, sourceBandCount * 2)
+        let focusedSpectrum = Array(shaped.prefix(upperBound))
+        let sourceBands = (0..<sourceBandCount).map { index in
+            sample(focusedSpectrum, at: index, outputCount: sourceBandCount)
         }
-        .onChange(of: isRecording) { _, newValue in
-            if !newValue {
-                samples = Array(repeating: 0, count: barScales.count)
-            }
+
+        return (0..<displayBarCount).map { index in
+            let sourceIndex = min(sourceBandCount - 1, abs(index - centerBarIndex))
+            return sourceBands[sourceIndex]
         }
     }
 
-    private func breathingFloor(for index: Int) -> Double {
-        guard isRecording else { return 0 }
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            let availableBarWidth = (size.width - CGFloat(displayBarCount - 1) * barSpacing) / CGFloat(displayBarCount)
+            let barWidth = max(1.1, min(2.4, availableBarWidth))
 
-        let pulse = isBreathing ? 1.0 : 0.0
-        let baseline = 0.08 + Double(barScales[index]) * 0.03
-        return baseline + pulse * 0.02
+            HStack(alignment: .center, spacing: barSpacing) {
+                ForEach(Array(displaySamples.enumerated()), id: \.offset) { index, sample in
+                    Capsule(style: .continuous)
+                        .fill(barFill(for: sample))
+                        .frame(
+                            width: barWidth,
+                            height: barHeight(for: sample, at: index, in: size)
+                        )
+                        .shadow(color: .black.opacity(isRecording ? 0.16 : 0.04), radius: 2.5, x: 0, y: 1.5)
+                        .shadow(color: Color.red.opacity(isRecording ? 0.18 : 0), radius: 5, x: 0, y: 0)
+                }
+            }
+            .frame(width: size.width, height: size.height, alignment: .center)
+        }
+        .animation(.easeOut(duration: 0.08), value: displaySamples)
+        .animation(.easeOut(duration: 0.08), value: level)
+    }
+
+    private func sample(_ values: [Double], at index: Int, outputCount: Int) -> Double {
+        guard !values.isEmpty else { return 0 }
+        guard values.count > 1, outputCount > 1 else { return values[0] }
+
+        let position = Double(index) / Double(outputCount - 1) * Double(values.count - 1)
+        let lowerIndex = Int(position.rounded(.down))
+        let upperIndex = min(values.count - 1, lowerIndex + 1)
+        let fraction = position - Double(lowerIndex)
+        return values[lowerIndex] * (1 - fraction) + values[upperIndex] * fraction
+    }
+
+    private func barHeight(for sample: Double, at index: Int, in size: CGSize) -> CGFloat {
+        let activity = CGFloat(min(1, max(0, level)))
+        let sourceIndex = min(sourceBandCount - 1, abs(index - centerBarIndex))
+        let envelope = sourceIndex < barEnvelope.count ? barEnvelope[sourceIndex] : 0.72
+        let shapedSample = pow(CGFloat(min(1, max(0, sample))), 0.38)
+        let quietFloor = isRecording ? size.height * 0.14 : size.height * 0.07
+        let activeHeight = shapedSample * size.height * 1.32 * envelope * (0.73 + activity * 0.44)
+        return min(size.height, max(quietFloor, activeHeight))
+    }
+
+    private func barFill(for sample: Double) -> LinearGradient {
+        let intensity = min(1, max(0, sample))
+        return LinearGradient(
+            colors: [
+                Color.red.opacity(isRecording ? 0.86 + intensity * 0.12 : 0.28),
+                Color(red: 1.0, green: 0.24, blue: 0.20).opacity(isRecording ? 0.68 + intensity * 0.22 : 0.18)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 }

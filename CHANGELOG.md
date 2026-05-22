@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+### Changed
+
+- Reworked the recording overlay waveform into a live FFT-driven red bar visualizer with mirrored low-to-high frequency bands.
+
 ## [0.1.3] - 2026-05-22
 
 ### Added
