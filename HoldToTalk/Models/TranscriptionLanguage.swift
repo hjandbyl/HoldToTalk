@@ -68,6 +68,13 @@ enum TranscriptionLanguage: String, CaseIterable, Identifiable, Sendable {
         .ko
     ]
 
+    static let qwenASRLanguages: [TranscriptionLanguage] = [
+        .auto,
+        .zh,
+        .yue,
+        .en
+    ]
+
     var title: String {
         switch self {
         case .auto: return L10n.tr("Auto")
@@ -172,6 +179,21 @@ enum TranscriptionLanguage: String, CaseIterable, Identifiable, Sendable {
             return "uk-UA"
         case .yue:
             return "yue-CN"
+        }
+    }
+
+    var qwenASRLanguageCode: String? {
+        switch self {
+        case .auto:
+            return nil
+        case .zh:
+            return "zh"
+        case .yue:
+            return "yue"
+        case .en:
+            return "en"
+        default:
+            return nil
         }
     }
 }

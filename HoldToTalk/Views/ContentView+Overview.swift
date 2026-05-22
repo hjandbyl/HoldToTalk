@@ -11,8 +11,10 @@ extension ContentView {
 
             if needsLocalSpeechModelDownloadNotice {
                 localSpeechModelDownloadNotice(showActions: true)
-            } else if controller.needsVolcengineAPIKey {
+            } else if controller.preferredRecognitionEngine == .volcengine, controller.needsVolcengineAPIKey {
                 volcengineAPIKeyNotice(showActions: true)
+            } else if controller.preferredRecognitionEngine == .qwenASR, controller.needsQwenASRAPIKey {
+                qwenASRAPIKeyNotice(showActions: true)
             }
 
             overviewSetupPanel

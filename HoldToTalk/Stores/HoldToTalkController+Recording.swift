@@ -52,7 +52,7 @@ extension HoldToTalkController {
             recordingTargetApplication = targetApplication
             targetAppText = targetApplication?.localizedName ?? L10n.tr("No target app captured.")
 
-            if recognitionEngine == .volcengine {
+            if recognitionEngine.isCloud {
                 startCloudSession(sessionID: recognitionSessionID)
                 currentRecordingURL = try recorder.start { [weak self] chunk in
                     Task { @MainActor in
@@ -82,7 +82,7 @@ extension HoldToTalkController {
     }
 
     func stopRecordingAndTranscribe() {
-        let pendingCloudAudio = recognitionEngine == .volcengine ? recorder.takePendingStreamingAudio() : nil
+        let pendingCloudAudio = recognitionEngine.isCloud ? recorder.takePendingStreamingAudio() : nil
         let audioURL = recorder.stop() ?? currentRecordingURL
         let trigger = recordingTrigger
         let targetApplication = recordingTargetApplication
@@ -133,10 +133,11 @@ extension HoldToTalkController {
 
                 try? FileManager.default.removeItem(at: audioURL)
 
-                if selectedEngine == .volcengine, activeRecognitionSessionID == recognitionSessionID {
+                if selectedEngine.isCloud, activeRecognitionSessionID == recognitionSessionID {
                     cloudStartTask = nil
                     cloudSendTask = nil
                     isCloudSessionReady = false
+                    cloudSessionEngine = nil
                     preconnectCloudSession()
                 }
             }
@@ -150,6 +151,21 @@ extension HoldToTalkController {
                     text = TextInjector.normalizedInsertionText(
                         from: finalizedTranscriptText(
                             from: try await cloudTranscriber.finish(finalAudio: pendingCloudAudio),
+                            shouldRemoveTrailingSentencePeriod: shouldRemoveTrailingSentencePeriod
+                        )
+                    )
+                    updateLastRecordingInfo(
+                        audioURL: audioURL,
+                        trigger: trigger,
+                        captureSummary: captureSummary,
+                        inputDevice: inputDevice
+                    )
+                case .qwenASR:
+                    try await cloudStartTask?.value
+                    _ = await cloudSendTask?.value
+                    text = TextInjector.normalizedInsertionText(
+                        from: finalizedTranscriptText(
+                            from: try await qwenASRTranscriber.finish(finalAudio: pendingCloudAudio),
                             shouldRemoveTrailingSentencePeriod: shouldRemoveTrailingSentencePeriod
                         )
                     )
@@ -197,6 +213,7 @@ extension HoldToTalkController {
             } catch {
                 finalStatus = error.localizedDescription
                 await cloudTranscriber.cancel()
+                await qwenASRTranscriber.cancel()
                 if trigger != Self.manualRecordingTrigger {
                     scheduleOverlayHide(after: 0.2, sessionID: recognitionSessionID)
                 }
@@ -220,7 +237,7 @@ extension HoldToTalkController {
         liveTranscript = ""
         inputLevel = 0
 
-        if selectedEngine == .volcengine {
+        if selectedEngine.isCloud {
             activeRecognitionSessionID += 1
             bufferedCloudChunks.removeAll(keepingCapacity: true)
             cloudStartTask?.cancel()
@@ -228,9 +245,11 @@ extension HoldToTalkController {
             cloudStartTask = nil
             cloudSendTask = nil
             isCloudSessionReady = false
+            cloudSessionEngine = nil
             cloudSessionLanguage = nil
-            Task { [weak self, cloudTranscriber] in
+            Task { [weak self, cloudTranscriber, qwenASRTranscriber] in
                 await cloudTranscriber.cancel()
+                await qwenASRTranscriber.cancel()
                 await MainActor.run {
                     self?.preconnectCloudSession()
                 }
@@ -266,22 +285,45 @@ extension HoldToTalkController {
         isCloudSessionReady = false
         let preconnectTask = cloudPreconnectTask
         cloudPreconnectTask = nil
-        let selectedLanguage = language(for: .volcengine)
+        let selectedEngine = recognitionEngine
+        let selectedLanguage = language(for: selectedEngine)
 
-        cloudStartTask = Task { [cloudTranscriber] in
+        cloudStartTask = Task { [cloudTranscriber, qwenASRTranscriber] in
             if let preconnectTask {
                 try? await preconnectTask.value
             }
 
-            try await cloudTranscriber.start(language: selectedLanguage) { [weak self] update in
-                Task { @MainActor in
-                    self?.handleCloudRecognitionUpdate(update, sessionID: sessionID)
+            switch selectedEngine {
+            case .volcengine:
+                try await cloudTranscriber.start(language: selectedLanguage) { [weak self] update in
+                    Task { @MainActor in
+                        self?.handleCloudRecognitionUpdate(
+                            text: update.text,
+                            isDefinite: update.isDefinite,
+                            engine: selectedEngine,
+                            sessionID: sessionID
+                        )
+                    }
                 }
+            case .qwenASR:
+                try await qwenASRTranscriber.start(language: selectedLanguage) { [weak self] update in
+                    Task { @MainActor in
+                        self?.handleCloudRecognitionUpdate(
+                            text: update.text,
+                            isDefinite: update.isDefinite,
+                            engine: selectedEngine,
+                            sessionID: sessionID
+                        )
+                    }
+                }
+            case .sherpaOnnx:
+                return
             }
 
             await MainActor.run {
-                guard self.activeRecognitionSessionID == sessionID else { return }
+                guard self.activeRecognitionSessionID == sessionID, self.recognitionEngine == selectedEngine else { return }
                 self.isCloudSessionReady = true
+                self.cloudSessionEngine = selectedEngine
                 self.cloudSessionLanguage = selectedLanguage
                 self.flushBufferedCloudChunks()
             }
@@ -290,7 +332,7 @@ extension HoldToTalkController {
 
     func preconnectCloudSession() {
         guard
-            recognitionEngine == .volcengine,
+            recognitionEngine.isCloud,
             isEnabled,
             !isRecording,
             !isTranscribing,
@@ -299,24 +341,32 @@ extension HoldToTalkController {
             return
         }
 
-        guard VolcengineCredentialStore.apiKey() != nil else {
+        let selectedEngine = recognitionEngine
+        guard !needsAPIKey(for: selectedEngine) else {
             fallbackToLocalRecognitionForMissingAPIKey()
             return
         }
 
-        let selectedLanguage = language(for: .volcengine)
+        let selectedLanguage = language(for: selectedEngine)
         if missingKeyboardPermissionNames().isEmpty {
-            statusMessage = L10n.tr("Preparing Volcengine cloud...")
+            statusMessage = L10n.tr("Preparing %@...", selectedEngine.title)
         }
 
-        cloudPreconnectTask = Task { [weak self, cloudTranscriber] in
+        cloudPreconnectTask = Task { [weak self, cloudTranscriber, qwenASRTranscriber] in
             do {
-                try await cloudTranscriber.prepare(language: selectedLanguage)
+                switch selectedEngine {
+                case .volcengine:
+                    try await cloudTranscriber.prepare(language: selectedLanguage)
+                case .qwenASR:
+                    try await qwenASRTranscriber.prepare(language: selectedLanguage)
+                case .sherpaOnnx:
+                    return
+                }
 
                 await MainActor.run {
                     guard let self else { return }
                     guard
-                        self.recognitionEngine == .volcengine,
+                        self.recognitionEngine == selectedEngine,
                         self.isEnabled,
                         self.cloudPreconnectTask != nil,
                         !self.isRecording,
@@ -326,8 +376,9 @@ extension HoldToTalkController {
                         return
                     }
 
+                    self.cloudSessionEngine = selectedEngine
                     self.cloudSessionLanguage = selectedLanguage
-                    self.statusMessage = L10n.tr("Listening for %@. Volcengine cloud ready.", self.holdShortcut.displayName)
+                    self.statusMessage = L10n.tr("Listening for %@. %@ ready.", self.holdShortcut.displayName, selectedEngine.title)
                 }
             } catch {
                 await MainActor.run {
@@ -335,7 +386,7 @@ extension HoldToTalkController {
                     guard self.cloudPreconnectTask != nil else { return }
                     self.cloudPreconnectTask = nil
                     if self.isEnabled, !self.isRecording, !self.isTranscribing, self.missingKeyboardPermissionNames().isEmpty {
-                        self.statusMessage = L10n.tr("Volcengine cloud preconnect failed: %@", error.localizedDescription)
+                        self.statusMessage = L10n.tr("%@ preconnect failed: %@", selectedEngine.title, error.localizedDescription)
                     }
                 }
                 throw error
@@ -344,7 +395,7 @@ extension HoldToTalkController {
     }
 
     func handleCloudAudioChunk(_ chunk: Data) {
-        guard recognitionEngine == .volcengine else { return }
+        guard recognitionEngine.isCloud else { return }
 
         if isCloudSessionReady {
             enqueueCloudAudio(chunk)
@@ -378,26 +429,36 @@ extension HoldToTalkController {
 
     func enqueueCloudAudio(_ chunk: Data) {
         let previousTask = cloudSendTask
-        cloudSendTask = Task { [cloudTranscriber] in
+        let selectedEngine = cloudSessionEngine ?? recognitionEngine
+        cloudSendTask = Task { [cloudTranscriber, qwenASRTranscriber] in
             _ = await previousTask?.value
-            try? await cloudTranscriber.sendAudio(chunk)
+            switch selectedEngine {
+            case .volcengine:
+                try? await cloudTranscriber.sendAudio(chunk)
+            case .qwenASR:
+                try? await qwenASRTranscriber.sendAudio(chunk)
+            case .sherpaOnnx:
+                return
+            }
         }
     }
 
     func handleCloudRecognitionUpdate(
-        _ update: VolcengineStreamingClient.RecognitionUpdate,
+        text: String,
+        isDefinite: Bool,
+        engine: RecognitionEngine,
         sessionID: Int
     ) {
         guard
-            recognitionEngine == .volcengine,
+            recognitionEngine == engine,
             sessionID == activeRecognitionSessionID,
             isRecording
         else {
             return
         }
 
-        liveTranscript = update.text
-        statusMessage = update.isDefinite ? L10n.tr("Recording. Cloud finalizing segment...") : L10n.tr("Recording with cloud recognition...")
+        liveTranscript = text
+        statusMessage = isDefinite ? L10n.tr("Recording. Cloud finalizing segment...") : L10n.tr("Recording with cloud recognition...")
     }
 
 }

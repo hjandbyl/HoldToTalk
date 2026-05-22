@@ -10,6 +10,7 @@ struct ContentView: View {
 
     let labelWidth: CGFloat = 136
     let volcengineAPIKeyURL = URL(string: "https://console.volcengine.com/speech/new/overview?projectName=default")!
+    let qwenASRAPIKeyURL = URL(string: "https://bailian.console.aliyun.com/?tab=model#/api-key")!
 
     var appLanguage: AppLanguage {
         AppLanguage(rawValue: appLanguageID) ?? .system

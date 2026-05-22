@@ -31,7 +31,7 @@ extension HoldToTalkController {
         if !isRecording {
             statusMessage = pendingTranscriptionCount > 1
                 ? L10n.tr("Transcribing queued recordings...")
-                : recognitionEngine == .volcengine
+                : recognitionEngine.isCloud
                     ? L10n.tr("Waiting for cloud final result...")
                     : L10n.tr("Transcribing with sherpa-onnx...")
         }
@@ -116,7 +116,7 @@ extension HoldToTalkController {
         if isTranscribing {
             statusMessage = pendingTranscriptionCount > 1
                 ? L10n.tr("Transcribing queued recordings...")
-                : recognitionEngine == .volcengine
+                : recognitionEngine.isCloud
                     ? L10n.tr("Waiting for cloud final result...")
                     : L10n.tr("Transcribing with sherpa-onnx...")
             return
@@ -142,8 +142,8 @@ extension HoldToTalkController {
             return
         }
 
-        if needsVolcengineAPIKey {
-            statusMessage = L10n.tr("Using local recognition. Add a Volcengine API key to enable cloud recognition.")
+        if preferredRecognitionEngine.isCloud, needsAPIKey(for: preferredRecognitionEngine) {
+            statusMessage = L10n.tr("Using local recognition. Add an API key to enable cloud recognition.")
             return
         }
 

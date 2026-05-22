@@ -41,12 +41,13 @@ Accessibility is needed for global shortcut detection and text insertion into th
 
 ## Recognition
 
-HoldToTalk supports two recognition engines:
+HoldToTalk supports three recognition engines:
 
 - `Doubao Streaming Speech Recognition 2.0`: cloud streaming recognition with partial text while recording and a final result after release.
+- `Qwen3-ASR Flash Realtime`: DashScope WebSocket cloud streaming recognition with partial text while recording and a final result after release.
 - `sherpa-onnx Local`: offline recognition from the full recording after release.
 
-Set the Doubao Streaming Speech Recognition 2.0 API key in the app window. The key is saved to the macOS Keychain and is not stored in source code.
+Set the cloud recognition API key in the app window. Keys are saved to the macOS Keychain and are not stored in source code.
 
 Local ASR models are not bundled in the app package. Choose and download a SenseVoice or FireRedASR model from the Recognition panel. Downloaded local models are stored under the user's Application Support directory at `HoldToTalk/models`; development builds also detect matching model folders under the repository's root `models` directory.
 

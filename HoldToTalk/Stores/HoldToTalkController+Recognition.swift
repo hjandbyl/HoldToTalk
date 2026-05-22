@@ -12,10 +12,27 @@ extension HoldToTalkController {
         volcengineAPIKeyStatusText = VolcengineCredentialStore.apiKey() == nil ? L10n.tr("Not set") : L10n.tr("Saved in Keychain")
     }
 
+    func refreshQwenASRAPIKeyState() {
+        qwenASRAPIKeyStatusText = QwenASRCredentialStore.apiKey() == nil ? L10n.tr("Not set") : L10n.tr("Saved in Keychain")
+    }
+
+    func needsAPIKey(for engine: RecognitionEngine) -> Bool {
+        switch engine {
+        case .volcengine:
+            return needsVolcengineAPIKey
+        case .qwenASR:
+            return needsQwenASRAPIKey
+        case .sherpaOnnx:
+            return false
+        }
+    }
+
     func language(for engine: RecognitionEngine) -> TranscriptionLanguage {
         switch engine {
         case .volcengine:
             return TranscriptionLanguage.volcengineLanguages.contains(volcengineLanguage) ? volcengineLanguage : .auto
+        case .qwenASR:
+            return TranscriptionLanguage.qwenASRLanguages.contains(qwenASRLanguage) ? qwenASRLanguage : .auto
         case .sherpaOnnx:
             return selectedLocalSpeechModel.supportedLanguages.contains(sherpaOnnxLanguage) ? sherpaOnnxLanguage : .auto
         }
@@ -25,19 +42,21 @@ extension HoldToTalkController {
         switch engine {
         case .volcengine:
             return TranscriptionLanguage.volcengineLanguages
+        case .qwenASR:
+            return TranscriptionLanguage.qwenASRLanguages
         case .sherpaOnnx:
             return selectedLocalSpeechModel.supportedLanguages
         }
     }
 
     func ensureRecognitionEngineAvailable() {
-        if recognitionEngine == .volcengine, needsVolcengineAPIKey {
+        if recognitionEngine.isCloud, needsAPIKey(for: recognitionEngine) {
             fallbackToLocalRecognitionForMissingAPIKey()
         }
     }
 
     func fallbackToLocalRecognitionForMissingAPIKey() {
-        guard needsVolcengineAPIKey else { return }
+        guard preferredRecognitionEngine.isCloud, needsAPIKey(for: preferredRecognitionEngine) else { return }
 
         if recognitionEngine != .sherpaOnnx {
             recognitionEngine = .sherpaOnnx
@@ -49,7 +68,7 @@ extension HoldToTalkController {
         }
 
         if !isRecording, !isTranscribing {
-            statusMessage = L10n.tr("Using local recognition. Add a Volcengine API key to enable cloud recognition.")
+            statusMessage = L10n.tr("Using local recognition. Add an API key to enable cloud recognition.")
         }
     }
 
@@ -62,9 +81,13 @@ extension HoldToTalkController {
         cloudSendTask = nil
         bufferedCloudChunks.removeAll(keepingCapacity: true)
         isCloudSessionReady = false
+        cloudSessionEngine = nil
         cloudSessionLanguage = nil
         Task { [cloudTranscriber] in
             await cloudTranscriber.cancel()
+        }
+        Task { [qwenASRTranscriber] in
+            await qwenASRTranscriber.cancel()
         }
     }
 

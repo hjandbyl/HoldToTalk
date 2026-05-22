@@ -7,6 +7,7 @@ extension ContentView {
 
             Picker(L10n.tr("Engine"), selection: recognitionEngineSelection) {
                 Text(L10n.tr("Doubao")).tag(RecognitionEngine.volcengine)
+                Text(L10n.tr("Qwen")).tag(RecognitionEngine.qwenASR)
                 Text(L10n.tr("Local")).tag(RecognitionEngine.sherpaOnnx)
             }
             .pickerStyle(.segmented)
@@ -15,6 +16,8 @@ extension ContentView {
             switch controller.preferredRecognitionEngine {
             case .volcengine:
                 volcenginePanel
+            case .qwenASR:
+                qwenASRPanel
             case .sherpaOnnx:
                 localSpeechModelsPanel
             }
@@ -167,7 +170,7 @@ extension ContentView {
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 360)
                     .onChange(of: controller.volcengineAPIKeyDraft) { _, _ in
-                        scheduleAPIKeyAutosave()
+                        scheduleAPIKeyAutosave(for: .volcengine)
                     }
 
                 Button {
@@ -182,6 +185,40 @@ extension ContentView {
             }
 
             statusRow(title: L10n.tr("Key Status"), value: controller.volcengineAPIKeyStatusText)
+        }
+        .padding(16)
+        .liquidGlassSurface(interactive: true)
+    }
+
+    var qwenASRPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader(title: L10n.tr("Qwen3-ASR Flash Realtime"), systemImage: "cloud.fill")
+            recognitionLanguagePicker
+
+            if controller.needsQwenASRAPIKey {
+                qwenASRAPIKeyNotice(showActions: false)
+            }
+
+            labeledControlRow(L10n.tr("API Key")) {
+                SecureField(L10n.tr("Paste API key to save automatically"), text: $controller.qwenASRAPIKeyDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 360)
+                    .onChange(of: controller.qwenASRAPIKeyDraft) { _, _ in
+                        scheduleAPIKeyAutosave(for: .qwenASR)
+                    }
+
+                Button {
+                    controller.clearQwenASRAPIKey()
+                } label: {
+                    Label(L10n.tr("Clear"), systemImage: "trash")
+                }
+
+                Link(destination: qwenASRAPIKeyURL) {
+                    Label(L10n.tr("Get API Key"), systemImage: "arrow.up.right.square")
+                }
+            }
+
+            statusRow(title: L10n.tr("Key Status"), value: controller.qwenASRAPIKeyStatusText)
         }
         .padding(16)
         .liquidGlassSurface(interactive: true)
@@ -215,6 +252,47 @@ extension ContentView {
                             .foregroundStyle(.secondary)
 
                         Link(destination: volcengineAPIKeyURL) {
+                            Label(L10n.tr("Get API Key"), systemImage: "arrow.up.right.square")
+                        }
+                    }
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .materialSurface(tint: .blue)
+    }
+
+    func qwenASRAPIKeyNotice(showActions: Bool) -> some View {
+        Button {
+            selectedSection = .recognition
+        } label: {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "info.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.blue)
+                    .frame(width: 22)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L10n.tr("Local recognition is active"))
+                        .font(.headline)
+
+                    Text(L10n.tr("Add a Qwen-ASR API key to enable cloud recognition."))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+
+                if showActions {
+                    HStack(spacing: 8) {
+                        Label(L10n.tr("Add API Key"), systemImage: "key.fill")
+                            .foregroundStyle(.secondary)
+
+                        Link(destination: qwenASRAPIKeyURL) {
                             Label(L10n.tr("Get API Key"), systemImage: "arrow.up.right.square")
                         }
                     }

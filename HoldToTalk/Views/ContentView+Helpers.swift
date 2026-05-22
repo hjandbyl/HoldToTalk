@@ -39,7 +39,7 @@ extension ContentView {
 
     var recognitionSummary: String {
         if controller.isUsingLocalFallbackForMissingAPIKey {
-            return L10n.tr("Volcengine selected, using local until API key is added")
+            return L10n.tr("%@ selected, using local until API key is added", controller.preferredRecognitionEngine.title)
         }
 
         if controller.preferredRecognitionEngine == .sherpaOnnx {
@@ -128,12 +128,19 @@ extension ContentView {
         .font(.callout)
     }
 
-    func scheduleAPIKeyAutosave() {
+    func scheduleAPIKeyAutosave(for engine: RecognitionEngine) {
         apiKeyAutosaveTask?.cancel()
         apiKeyAutosaveTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 450_000_000)
             guard !Task.isCancelled else { return }
-            controller.syncVolcengineAPIKeyDraft()
+            switch engine {
+            case .volcengine:
+                controller.syncVolcengineAPIKeyDraft()
+            case .qwenASR:
+                controller.syncQwenASRAPIKeyDraft()
+            case .sherpaOnnx:
+                return
+            }
         }
     }
 

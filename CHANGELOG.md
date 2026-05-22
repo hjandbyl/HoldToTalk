@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-05-22
+
+### Added
+
+- Added Qwen3-ASR Flash Realtime as a cloud recognition engine through the raw DashScope WebSocket protocol.
+- Added separate Keychain storage and settings UI for Qwen-ASR API keys.
+- Added Qwen-ASR language selection for automatic detection, Mandarin, Cantonese, and English.
+
 ### Changed
 
 - Reorganized the project to use root-level `HoldToTalk` and `CSherpaOnnx` target folders instead of a `Sources` wrapper directory.

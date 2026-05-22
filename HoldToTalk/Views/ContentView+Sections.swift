@@ -148,7 +148,8 @@ extension ContentView {
                 statusRow(title: L10n.tr("Shortcut Event"), value: controller.shortcutEventText)
                 statusRow(title: L10n.tr("Last Recording"), value: controller.lastRecordingInfo)
                 statusRow(title: L10n.tr("Accessibility"), value: controller.accessibilityStatusText)
-                statusRow(title: L10n.tr("Key Status"), value: controller.volcengineAPIKeyStatusText)
+                statusRow(title: L10n.tr("Doubao Key"), value: controller.volcengineAPIKeyStatusText)
+                statusRow(title: L10n.tr("Qwen Key"), value: controller.qwenASRAPIKeyStatusText)
                 statusRow(title: L10n.tr("Version"), value: AppVersion.displayText)
             }
             .padding(16)

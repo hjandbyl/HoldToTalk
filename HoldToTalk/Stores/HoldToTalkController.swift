@@ -28,9 +28,12 @@ final class HoldToTalkController: ObservableObject {
     @Published var downloadingLocalSpeechModelID: String?
     @Published var localSpeechModelDownloadProgress = 0.0
     @Published var volcengineLanguage: TranscriptionLanguage = .auto
+    @Published var qwenASRLanguage: TranscriptionLanguage = .auto
     @Published var sherpaOnnxLanguage: TranscriptionLanguage = .auto
     @Published var volcengineAPIKeyDraft = ""
     @Published var volcengineAPIKeyStatusText = L10n.tr("Not set")
+    @Published var qwenASRAPIKeyDraft = ""
+    @Published var qwenASRAPIKeyStatusText = L10n.tr("Not set")
     @Published var holdShortcut: HoldShortcut
     @Published var isRecordingShortcut = false
     @Published var removesTrailingSentencePeriod: Bool {
@@ -43,6 +46,7 @@ final class HoldToTalkController: ObservableObject {
     let keyMonitor = GlobalFnKeyMonitor()
     let transcriber = SherpaOnnxClient()
     let cloudTranscriber = VolcengineStreamingClient()
+    let qwenASRTranscriber = QwenASRStreamingClient()
     let injector = TextInjector()
     lazy var transcriptionOverlay = TranscriptionOverlayController(controller: self)
 
@@ -61,6 +65,7 @@ final class HoldToTalkController: ObservableObject {
     var cloudSendTask: Task<Void, Never>?
     var bufferedCloudChunks: [Data] = []
     var isCloudSessionReady = false
+    var cloudSessionEngine: RecognitionEngine?
     var cloudSessionLanguage: TranscriptionLanguage?
     var activeRecognitionSessionID = 0
     var overlayHideTask: Task<Void, Never>?
@@ -120,8 +125,14 @@ final class HoldToTalkController: ObservableObject {
         VolcengineCredentialStore.apiKey() == nil
     }
 
+    var needsQwenASRAPIKey: Bool {
+        QwenASRCredentialStore.apiKey() == nil
+    }
+
     var isUsingLocalFallbackForMissingAPIKey: Bool {
-        preferredRecognitionEngine == .volcengine && recognitionEngine == .sherpaOnnx && needsVolcengineAPIKey
+        preferredRecognitionEngine.isCloud
+            && recognitionEngine == .sherpaOnnx
+            && needsAPIKey(for: preferredRecognitionEngine)
     }
 
     private init() {
@@ -132,7 +143,9 @@ final class HoldToTalkController: ObservableObject {
         keyMonitor.delegate = self
         keyMonitor.shortcut = savedShortcut
         volcengineAPIKeyDraft = VolcengineCredentialStore.apiKey() ?? ""
+        qwenASRAPIKeyDraft = QwenASRCredentialStore.apiKey() ?? ""
         refreshVolcengineAPIKeyState()
+        refreshQwenASRAPIKeyState()
         refreshLocalSpeechModelStatus()
         if needsVolcengineAPIKey {
             recognitionEngine = .sherpaOnnx
@@ -173,13 +186,16 @@ final class HoldToTalkController: ObservableObject {
             statusMessage = enabled ? L10n.tr("Listening for %@.", holdShortcut.displayName) : L10n.tr("Paused.")
         }
 
-        if enabled, recognitionEngine == .volcengine {
+        if enabled, recognitionEngine.isCloud {
             preconnectCloudSession()
         } else if !enabled, !isRecording, !isTranscribing {
             cloudPreconnectTask?.cancel()
             cloudPreconnectTask = nil
             Task { [cloudTranscriber] in
                 await cloudTranscriber.cancel()
+            }
+            Task { [qwenASRTranscriber] in
+                await qwenASRTranscriber.cancel()
             }
         }
     }
@@ -237,6 +253,35 @@ final class HoldToTalkController: ObservableObject {
         }
     }
 
+    func syncQwenASRAPIKeyDraft() {
+        let apiKey = qwenASRAPIKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !apiKey.isEmpty else {
+            clearQwenASRAPIKey()
+            return
+        }
+
+        guard QwenASRCredentialStore.apiKey() != apiKey else {
+            qwenASRAPIKeyDraft = apiKey
+            refreshQwenASRAPIKeyState()
+            return
+        }
+
+        do {
+            try QwenASRCredentialStore.saveAPIKey(apiKey)
+            qwenASRAPIKeyDraft = apiKey
+            refreshQwenASRAPIKeyState()
+            resetCloudSession()
+            preferredRecognitionEngine = .qwenASR
+            recognitionEngine = .qwenASR
+            if !isRecording, !isTranscribing {
+                statusMessage = L10n.tr("Qwen-ASR API key saved. Cloud recognition is available.")
+                preconnectCloudSession()
+            }
+        } catch {
+            qwenASRAPIKeyStatusText = L10n.tr("Could not save API key: %@", error.localizedDescription)
+        }
+    }
+
     func clearVolcengineAPIKey() {
         do {
             try VolcengineCredentialStore.deleteAPIKey()
@@ -249,17 +294,29 @@ final class HoldToTalkController: ObservableObject {
         }
     }
 
+    func clearQwenASRAPIKey() {
+        do {
+            try QwenASRCredentialStore.deleteAPIKey()
+            qwenASRAPIKeyDraft = ""
+            refreshQwenASRAPIKeyState()
+            resetCloudSession()
+            fallbackToLocalRecognitionForMissingAPIKey()
+        } catch {
+            qwenASRAPIKeyStatusText = L10n.tr("Could not clear API key: %@", error.localizedDescription)
+        }
+    }
+
     func setPreferredRecognitionEngine(_ engine: RecognitionEngine) {
         preferredRecognitionEngine = engine
 
         switch engine {
-        case .volcengine:
-            guard !needsVolcengineAPIKey else {
+        case .volcengine, .qwenASR:
+            guard !needsAPIKey(for: engine) else {
                 fallbackToLocalRecognitionForMissingAPIKey()
                 return
             }
 
-            recognitionEngine = .volcengine
+            recognitionEngine = engine
             if !isRecording, !isTranscribing {
                 preconnectCloudSession()
             }
@@ -270,6 +327,9 @@ final class HoldToTalkController: ObservableObject {
             if !isRecording, !isTranscribing {
                 Task { [cloudTranscriber] in
                     await cloudTranscriber.cancel()
+                }
+                Task { [qwenASRTranscriber] in
+                    await qwenASRTranscriber.cancel()
                 }
             }
             if isSelectedLocalSpeechModelInstalled {
@@ -409,6 +469,16 @@ final class HoldToTalkController: ObservableObject {
                 resetCloudSession()
             }
             if recognitionEngine == .volcengine, !isRecording, !isTranscribing {
+                preconnectCloudSession()
+            }
+        case .qwenASR:
+            guard TranscriptionLanguage.qwenASRLanguages.contains(language) else { return }
+            guard qwenASRLanguage != language else { return }
+            qwenASRLanguage = language
+            if recognitionEngine == .qwenASR {
+                resetCloudSession()
+            }
+            if recognitionEngine == .qwenASR, !isRecording, !isTranscribing {
                 preconnectCloudSession()
             }
         case .sherpaOnnx:
