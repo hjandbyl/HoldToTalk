@@ -110,7 +110,7 @@ private final class OfflineLocalSpeechRecognizer: @unchecked Sendable {
         config.feat_config.feature_dim = 80
         config.model_config.num_threads = 4
         config.model_config.provider = try cString("cpu")
-        config.model_config.tokens = try cString(modelDirectory.appendingPathComponent("tokens.txt").path)
+        config.model_config.tokens = try cString(modelDirectory.appendingPathComponent(model.tokensFileName).path)
         config.decoding_method = try cString("greedy_search")
 
         switch model.kind {
@@ -123,6 +123,14 @@ private final class OfflineLocalSpeechRecognizer: @unchecked Sendable {
             config.model_config.fire_red_asr.decoder = try cString(modelDirectory.appendingPathComponent("decoder.int8.onnx").path)
         case .fireRedAsrCtc:
             config.model_config.fire_red_asr_ctc.model = try cString(modelDirectory.appendingPathComponent("model.int8.onnx").path)
+        case .whisper:
+            guard let fileStem = model.whisperFileStem else {
+                throw SherpaOnnxClientError.couldNotPrepareWhisperModel
+            }
+            config.model_config.whisper.encoder = try cString(modelDirectory.appendingPathComponent("\(fileStem)-encoder.int8.onnx").path)
+            config.model_config.whisper.decoder = try cString(modelDirectory.appendingPathComponent("\(fileStem)-decoder.int8.onnx").path)
+            config.model_config.whisper.language = try cString(language == "auto" ? "" : language)
+            config.model_config.whisper.task = try cString("transcribe")
         }
 
         guard let recognizer = SherpaOnnxCreateOfflineRecognizer(&config) else {
@@ -190,6 +198,7 @@ enum SherpaOnnxClientError: LocalizedError {
     case couldNotReadResult
     case couldNotReadAudio
     case unsupportedAudioFormat
+    case couldNotPrepareWhisperModel
 
     var errorDescription: String? {
         switch self {
@@ -207,6 +216,8 @@ enum SherpaOnnxClientError: LocalizedError {
             return L10n.tr("Could not read the recorded audio.")
         case .unsupportedAudioFormat:
             return L10n.tr("Unsupported recorded audio format.")
+        case .couldNotPrepareWhisperModel:
+            return L10n.tr("Could not prepare Whisper model files.")
         }
     }
 }

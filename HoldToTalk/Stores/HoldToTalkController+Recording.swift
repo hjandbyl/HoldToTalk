@@ -186,7 +186,7 @@ extension HoldToTalkController {
                         from: finalizedTranscriptText(
                             from: try await transcriber.transcribe(
                                 audioURL: audioURL,
-                                language: selectedLanguage.sherpaOnnxLanguageCode,
+                                language: selectedLanguage.localSpeechModelLanguageCode(for: selectedLocalModel),
                                 model: selectedLocalModel
                             ),
                             shouldRemoveTrailingSentencePeriod: shouldRemoveTrailingSentencePeriod

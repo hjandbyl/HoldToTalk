@@ -4,11 +4,13 @@ enum LocalSpeechModelKind: String, Sendable {
     case senseVoice
     case fireRedAsr
     case fireRedAsrCtc
+    case whisper
 }
 
 enum LocalSpeechModelFamily: String, CaseIterable, Identifiable, Sendable {
     case senseVoice
     case fireRedAsr
+    case whisper
 
     var id: String { rawValue }
 
@@ -18,6 +20,8 @@ enum LocalSpeechModelFamily: String, CaseIterable, Identifiable, Sendable {
             return "SenseVoice"
         case .fireRedAsr:
             return "FireRedASR"
+        case .whisper:
+            return "Whisper"
         }
     }
 }
@@ -40,14 +44,25 @@ struct LocalSpeechModel: Identifiable, Hashable, Sendable {
     }
 
     var supportedLanguageSummary: String {
-        supportedLanguages
-            .filter { $0 != .auto }
-            .map(\.title)
-            .joined(separator: ", ")
+        let languages = supportedLanguages.filter { $0 != .auto }
+        if languages.count > 6 {
+            return L10n.tr("%d languages", languages.count)
+        }
+
+        return languages.map(\.title).joined(separator: ", ")
     }
 
     var punctuationSummary: String {
         punctuationSupport.title
+    }
+
+    var tokensFileName: String {
+        requiredFiles.first { $0.hasSuffix("tokens.txt") } ?? "tokens.txt"
+    }
+
+    var whisperFileStem: String? {
+        guard kind == .whisper else { return nil }
+        return directoryName.replacingOccurrences(of: "sherpa-onnx-whisper-", with: "")
     }
 
     static let defaultModelID = "sensevoice-2024-07-17-int8"
@@ -117,6 +132,58 @@ struct LocalSpeechModel: Identifiable, Hashable, Sendable {
             capabilitySummary: "Chinese and English. Older FireRedASR large model; slow on CPU.",
             supportedLanguages: [.auto, .zh, .en],
             punctuationSupport: .notSupported
+        ),
+        LocalSpeechModel(
+            id: "whisper-tiny-int8",
+            family: .whisper,
+            kind: .whisper,
+            title: "Tiny int8",
+            directoryName: "sherpa-onnx-whisper-tiny",
+            archiveURL: URL(string: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.tar.bz2")!,
+            requiredFiles: ["tiny-encoder.int8.onnx", "tiny-decoder.int8.onnx", "tiny-tokens.txt"],
+            sizeDescription: "~150 MB",
+            capabilitySummary: "Multilingual Whisper model. Fastest Whisper option; lower accuracy.",
+            supportedLanguages: TranscriptionLanguage.whisperLanguages,
+            punctuationSupport: .supported
+        ),
+        LocalSpeechModel(
+            id: "whisper-base-int8",
+            family: .whisper,
+            kind: .whisper,
+            title: "Base int8",
+            directoryName: "sherpa-onnx-whisper-base",
+            archiveURL: URL(string: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-base.tar.bz2")!,
+            requiredFiles: ["base-encoder.int8.onnx", "base-decoder.int8.onnx", "base-tokens.txt"],
+            sizeDescription: "~290 MB",
+            capabilitySummary: "Multilingual Whisper model. Balanced speed and accuracy.",
+            supportedLanguages: TranscriptionLanguage.whisperLanguages,
+            punctuationSupport: .supported
+        ),
+        LocalSpeechModel(
+            id: "whisper-small-int8",
+            family: .whisper,
+            kind: .whisper,
+            title: "Small int8",
+            directoryName: "sherpa-onnx-whisper-small",
+            archiveURL: URL(string: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-small.tar.bz2")!,
+            requiredFiles: ["small-encoder.int8.onnx", "small-decoder.int8.onnx", "small-tokens.txt"],
+            sizeDescription: "~970 MB",
+            capabilitySummary: "Multilingual Whisper model. Higher accuracy; slower on CPU.",
+            supportedLanguages: TranscriptionLanguage.whisperLanguages,
+            punctuationSupport: .supported
+        ),
+        LocalSpeechModel(
+            id: "whisper-medium-int8",
+            family: .whisper,
+            kind: .whisper,
+            title: "Medium int8",
+            directoryName: "sherpa-onnx-whisper-medium",
+            archiveURL: URL(string: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-medium.tar.bz2")!,
+            requiredFiles: ["medium-encoder.int8.onnx", "medium-decoder.int8.onnx", "medium-tokens.txt"],
+            sizeDescription: "~2.9 GB",
+            capabilitySummary: "Multilingual Whisper large local option. More accurate; slowest on CPU.",
+            supportedLanguages: TranscriptionLanguage.whisperLanguages,
+            punctuationSupport: .supported
         )
     ]
 

@@ -75,6 +75,35 @@ enum TranscriptionLanguage: String, CaseIterable, Identifiable, Sendable {
         .en
     ]
 
+    static let whisperLanguages: [TranscriptionLanguage] = [
+        .auto,
+        .zh,
+        .en,
+        .ja,
+        .id,
+        .es,
+        .pt,
+        .de,
+        .fr,
+        .ko,
+        .fil,
+        .ms,
+        .th,
+        .ar,
+        .it,
+        .bn,
+        .el,
+        .nl,
+        .ru,
+        .tr,
+        .vi,
+        .pl,
+        .ro,
+        .ne,
+        .uk,
+        .yue
+    ]
+
     var title: String {
         switch self {
         case .auto: return L10n.tr("Auto")
@@ -122,6 +151,24 @@ enum TranscriptionLanguage: String, CaseIterable, Identifiable, Sendable {
             return "ko"
         default:
             return "auto"
+        }
+    }
+
+    func localSpeechModelLanguageCode(for model: LocalSpeechModel) -> String {
+        switch model.kind {
+        case .whisper:
+            return whisperLanguageCode
+        case .senseVoice, .fireRedAsr, .fireRedAsrCtc:
+            return sherpaOnnxLanguageCode
+        }
+    }
+
+    private var whisperLanguageCode: String {
+        switch self {
+        case .auto:
+            return "auto"
+        default:
+            return rawValue
         }
     }
 
