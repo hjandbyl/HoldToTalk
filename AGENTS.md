@@ -107,6 +107,11 @@ Keep dylib linking in build settings and dylib embedding in the `Embed ThirdPart
 - Prefer narrow changes over broad refactors, especially around permissions, global event taps, Keychain, and text insertion.
 - Do not revert unrelated dirty worktree changes.
 
+## Commit Rules
+
+- Before every commit, update `CHANGELOG.md` with a clear entry for the user-visible or engineering changes being committed.
+- Do not create a commit that changes behavior, UI, packaging, scripts, or project structure without including the corresponding changelog update in the same commit.
+
 ## Verification Checklist
 
 Use the narrowest verification that matches the change:

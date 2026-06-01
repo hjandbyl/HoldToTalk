@@ -6,6 +6,16 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+### Added
+
+- Added manual microphone input selection with an automatic system-default option.
+- Added a temporary API key reveal button for cloud recognition credentials.
+
+### Changed
+
+- Removed the menu bar permissions request action so permission management stays in the main window.
+- Documented the requirement to update `CHANGELOG.md` before every commit.
+
 ## [0.1.4] - 2026-06-01
 
 ### Changed
