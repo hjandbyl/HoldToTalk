@@ -3,7 +3,7 @@ import SwiftUI
 extension ContentView {
     var statusColor: Color {
         if controller.isRecording {
-            return .red
+            return .recordingAccent
         }
         if controller.isTranscribing {
             return .blue
@@ -101,6 +101,14 @@ extension ContentView {
         }
     }
 
+    var inputDeviceSelection: Binding<String> {
+        Binding {
+            controller.selectedInputDeviceUID
+        } set: { uid in
+            controller.setInputDeviceUID(uid)
+        }
+    }
+
     func labeledControlRow<Content: View>(
         _ title: String,
         @ViewBuilder content: () -> Content
@@ -141,6 +149,24 @@ extension ContentView {
             case .sherpaOnnx:
                 return
             }
+        }
+    }
+
+    func revealAPIKey(for engine: RecognitionEngine) {
+        if revealedAPIKeyEngine == engine {
+            apiKeyRevealTask?.cancel()
+            apiKeyRevealTask = nil
+            revealedAPIKeyEngine = nil
+            return
+        }
+
+        revealedAPIKeyEngine = engine
+        apiKeyRevealTask?.cancel()
+        apiKeyRevealTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled, revealedAPIKeyEngine == engine else { return }
+            revealedAPIKeyEngine = nil
+            apiKeyRevealTask = nil
         }
     }
 

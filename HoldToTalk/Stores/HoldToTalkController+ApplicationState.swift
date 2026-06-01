@@ -165,6 +165,19 @@ extension HoldToTalkController {
         UserDefaults.standard.set(data, forKey: shortcutDefaultsKey)
     }
 
+    static func loadInputDeviceUID() -> String {
+        UserDefaults.standard.string(forKey: inputDeviceDefaultsKey) ?? ""
+    }
+
+    func setInputDeviceUID(_ uid: String) {
+        selectedInputDeviceUID = uid
+    }
+
+    func refreshInputDeviceState() {
+        availableInputDevices = AudioDeviceInspector.inputDevices()
+        setIfChanged(\.inputDeviceText, AudioDeviceInspector.inputDeviceDisplayName(selectedUID: selectedInputDeviceUID))
+    }
+
     static func loadRemovesTrailingSentencePeriod() -> Bool {
         guard UserDefaults.standard.object(forKey: removesTrailingSentencePeriodDefaultsKey) != nil else {
             return true

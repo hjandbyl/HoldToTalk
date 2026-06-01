@@ -28,6 +28,7 @@ extension HoldToTalkController {
         }
 
         ensureRecognitionEngineAvailable()
+        refreshInputDeviceState()
 
         if recognitionEngine == .sherpaOnnx, !isSelectedLocalSpeechModelInstalled {
             statusMessage = L10n.tr("Download %@ before using local recognition.", selectedLocalSpeechModel.displayTitle)
@@ -51,10 +52,11 @@ extension HoldToTalkController {
             let targetApplication = currentInsertionTargetApplication()
             recordingTargetApplication = targetApplication
             targetAppText = targetApplication?.localizedName ?? L10n.tr("No target app captured.")
+            let selectedInputDeviceUID = self.selectedInputDeviceUID.isEmpty ? nil : self.selectedInputDeviceUID
 
             if recognitionEngine.isCloud {
                 startCloudSession(sessionID: recognitionSessionID)
-                currentRecordingURL = try recorder.start { [weak self] chunk in
+                currentRecordingURL = try recorder.start(inputDeviceUID: selectedInputDeviceUID) { [weak self] chunk in
                     Task { @MainActor in
                         self?.handleCloudAudioChunk(chunk)
                     }
@@ -64,7 +66,7 @@ extension HoldToTalkController {
                     }
                 }
             } else {
-                currentRecordingURL = try recorder.start(inputAnalysisHandler: { [weak self] analysis in
+                currentRecordingURL = try recorder.start(inputDeviceUID: selectedInputDeviceUID, inputAnalysisHandler: { [weak self] analysis in
                     Task { @MainActor in
                         self?.handleInputAnalysis(analysis)
                     }

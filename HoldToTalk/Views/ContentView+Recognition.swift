@@ -166,18 +166,10 @@ extension ContentView {
             }
 
             labeledControlRow(L10n.tr("API Key")) {
-                SecureField(L10n.tr("Paste API key to save automatically"), text: $controller.volcengineAPIKeyDraft)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 360)
-                    .onChange(of: controller.volcengineAPIKeyDraft) { _, _ in
-                        scheduleAPIKeyAutosave(for: .volcengine)
-                    }
-
-                Button {
-                    controller.clearVolcengineAPIKey()
-                } label: {
-                    Label(L10n.tr("Clear"), systemImage: "trash")
-                }
+                apiKeyInputField(
+                    engine: .volcengine,
+                    text: $controller.volcengineAPIKeyDraft
+                )
 
                 Link(destination: volcengineAPIKeyURL) {
                     Label(L10n.tr("Get API Key"), systemImage: "arrow.up.right.square")
@@ -200,18 +192,10 @@ extension ContentView {
             }
 
             labeledControlRow(L10n.tr("API Key")) {
-                SecureField(L10n.tr("Paste API key to save automatically"), text: $controller.qwenASRAPIKeyDraft)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 360)
-                    .onChange(of: controller.qwenASRAPIKeyDraft) { _, _ in
-                        scheduleAPIKeyAutosave(for: .qwenASR)
-                    }
-
-                Button {
-                    controller.clearQwenASRAPIKey()
-                } label: {
-                    Label(L10n.tr("Clear"), systemImage: "trash")
-                }
+                apiKeyInputField(
+                    engine: .qwenASR,
+                    text: $controller.qwenASRAPIKeyDraft
+                )
 
                 Link(destination: qwenASRAPIKeyURL) {
                     Label(L10n.tr("Get API Key"), systemImage: "arrow.up.right.square")
@@ -222,6 +206,33 @@ extension ContentView {
         }
         .padding(16)
         .liquidGlassSurface(interactive: true)
+    }
+
+    func apiKeyInputField(engine: RecognitionEngine, text: Binding<String>) -> some View {
+        HStack(spacing: 6) {
+            Group {
+                if revealedAPIKeyEngine == engine {
+                    TextField(L10n.tr("Paste API key to save automatically"), text: text)
+                } else {
+                    SecureField(L10n.tr("Paste API key to save automatically"), text: text)
+                }
+            }
+            .textFieldStyle(.roundedBorder)
+            .frame(maxWidth: 360)
+            .onChange(of: text.wrappedValue) { _, _ in
+                scheduleAPIKeyAutosave(for: engine)
+            }
+
+            Button {
+                revealAPIKey(for: engine)
+            } label: {
+                Image(systemName: revealedAPIKeyEngine == engine ? "eye.slash" : "eye")
+                    .frame(width: 18)
+            }
+            .buttonStyle(.borderless)
+            .help(revealedAPIKeyEngine == engine ? L10n.tr("Hide API Key") : L10n.tr("Show API Key"))
+            .accessibilityLabel(revealedAPIKeyEngine == engine ? L10n.tr("Hide API Key") : L10n.tr("Show API Key"))
+        }
     }
 
     func volcengineAPIKeyNotice(showActions: Bool) -> some View {

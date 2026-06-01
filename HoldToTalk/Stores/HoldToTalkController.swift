@@ -16,6 +16,13 @@ final class HoldToTalkController: ObservableObject {
     @Published var inputSpectrum = Array(repeating: 0.0, count: AudioRecorder.spectrumBandCount)
     @Published var microphoneStatusText = L10n.tr("Unknown")
     @Published var inputDeviceText = L10n.tr("Unknown")
+    @Published var availableInputDevices: [AudioInputDevice] = []
+    @Published var selectedInputDeviceUID: String {
+        didSet {
+            UserDefaults.standard.set(selectedInputDeviceUID, forKey: Self.inputDeviceDefaultsKey)
+            refreshInputDeviceState()
+        }
+    }
     @Published var shortcutEventText = L10n.tr("No shortcut event yet.")
     @Published var lastRecordingInfo = L10n.tr("No recording yet.")
     @Published var targetAppText = L10n.tr("No target app yet.")
@@ -76,6 +83,7 @@ final class HoldToTalkController: ObservableObject {
 
     let shortcutDefaultsKey = "HoldToTalk.holdShortcut"
     let localSpeechModelDefaultsKey = "HoldToTalk.localSpeechModel"
+    static let inputDeviceDefaultsKey = "HoldToTalk.inputDeviceUID"
     let minimumFnHoldDurationForRecognition: TimeInterval = 0.22
     static let manualRecordingTrigger = "Manual"
     static let removesTrailingSentencePeriodDefaultsKey = "HoldToTalk.removesTrailingSentencePeriod"
@@ -140,6 +148,7 @@ final class HoldToTalkController: ObservableObject {
         let savedShortcut = Self.loadHoldShortcut()
         holdShortcut = savedShortcut
         selectedLocalSpeechModel = Self.loadLocalSpeechModel()
+        selectedInputDeviceUID = Self.loadInputDeviceUID()
         removesTrailingSentencePeriod = Self.loadRemovesTrailingSentencePeriod()
         keyMonitor.delegate = self
         keyMonitor.shortcut = savedShortcut
@@ -148,6 +157,7 @@ final class HoldToTalkController: ObservableObject {
         refreshVolcengineAPIKeyState()
         refreshQwenASRAPIKeyState()
         refreshLocalSpeechModelStatus()
+        refreshInputDeviceState()
         if needsVolcengineAPIKey {
             recognitionEngine = .sherpaOnnx
             statusMessage = L10n.tr("Using local recognition. Add a Volcengine API key to enable cloud recognition.")
@@ -549,7 +559,7 @@ final class HoldToTalkController: ObservableObject {
 
     func refreshPermissionStatus() {
         setIfChanged(\.microphoneStatusText, PermissionHelper.microphoneStatusText)
-        setIfChanged(\.inputDeviceText, AudioDeviceInspector.defaultInputDeviceName())
+        refreshInputDeviceState()
         setIfChanged(\.accessibilityStatusText, PermissionHelper.isAccessibilityTrusted ? L10n.tr("Granted") : L10n.tr("Not granted"))
     }
 

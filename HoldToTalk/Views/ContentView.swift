@@ -7,6 +7,8 @@ struct ContentView: View {
     @AppStorage(AppDisplayModePreference.storageKey) var appDisplayModeID = AppDisplayModePreference.savedMode().rawValue
     @State var selectedSection: MainSection? = .overview
     @State var apiKeyAutosaveTask: Task<Void, Never>?
+    @State var apiKeyRevealTask: Task<Void, Never>?
+    @State var revealedAPIKeyEngine: RecognitionEngine?
 
     let labelWidth: CGFloat = 136
     let volcengineAPIKeyURL = URL(string: "https://console.volcengine.com/speech/new/overview?projectName=default")!

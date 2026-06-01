@@ -21,11 +21,6 @@ struct MenuBarContent: View {
                 controller.setListeningEnabled(!controller.isEnabled)
             }
 
-            Button(L10n.tr("Request Permissions")) {
-                controller.requestAccessibilityPermission()
-                controller.requestMicrophonePermission()
-            }
-
             Divider()
 
             Text(AppVersion.displayText)

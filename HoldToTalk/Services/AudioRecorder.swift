@@ -1,5 +1,6 @@
 import AVFoundation
 import Accelerate
+import AudioToolbox
 import Foundation
 
 struct AudioInputAnalysis: Sendable {
@@ -52,20 +53,21 @@ final class AudioRecorder: @unchecked Sendable {
         return Double(capturedFrames) / inputSampleRate
     }
 
-    func prepare() throws {
+    func prepare(inputDeviceUID: String? = nil) throws {
         if let engine, engine.isRunning {
             return
         }
 
-        try configureEngine()
+        try configureEngine(inputDeviceUID: inputDeviceUID)
         try engine?.start()
     }
 
     func start(
+        inputDeviceUID: String? = nil,
         streamingChunkHandler: StreamingChunkHandler? = nil,
         inputAnalysisHandler: InputAnalysisHandler? = nil
     ) throws -> URL {
-        try prepare()
+        try prepare(inputDeviceUID: inputDeviceUID)
 
         let inputFormat = try stateQueue.sync {
             guard inputSampleRate > 0 else {
@@ -102,9 +104,10 @@ final class AudioRecorder: @unchecked Sendable {
         return url
     }
 
-    private func configureEngine() throws {
+    private func configureEngine(inputDeviceUID: String?) throws {
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
+        try configureInputDevice(inputDeviceUID, on: inputNode)
         configureVoiceProcessing(on: inputNode)
 
         let inputFormat = inputNode.outputFormat(forBus: 0)
@@ -127,6 +130,29 @@ final class AudioRecorder: @unchecked Sendable {
         }
 
         engine.prepare()
+    }
+
+    private func configureInputDevice(_ uid: String?, on inputNode: AVAudioInputNode) throws {
+        guard let uid, !uid.isEmpty else { return }
+        guard var deviceID = AudioDeviceInspector.inputDeviceID(uid: uid) else {
+            throw AudioRecorderError.inputDeviceUnavailable
+        }
+        guard let audioUnit = inputNode.audioUnit else {
+            throw AudioRecorderError.couldNotAccessInputAudioUnit
+        }
+
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &deviceID,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+
+        guard status == noErr else {
+            throw AudioRecorderError.couldNotSelectInputDevice(status)
+        }
     }
 
     private func configureVoiceProcessing(on inputNode: AVAudioInputNode) {
@@ -407,6 +433,9 @@ private extension Array where Element == Double {
 enum AudioRecorderError: LocalizedError {
     case noInputDevice
     case couldNotCreateOutputFormat
+    case inputDeviceUnavailable
+    case couldNotAccessInputAudioUnit
+    case couldNotSelectInputDevice(OSStatus)
 
     var errorDescription: String? {
         switch self {
@@ -414,6 +443,12 @@ enum AudioRecorderError: LocalizedError {
             return L10n.tr("No microphone input device is available.")
         case .couldNotCreateOutputFormat:
             return L10n.tr("Could not create the 16 kHz WAV recording format.")
+        case .inputDeviceUnavailable:
+            return L10n.tr("Selected microphone is not available.")
+        case .couldNotAccessInputAudioUnit:
+            return L10n.tr("Could not access microphone input unit.")
+        case .couldNotSelectInputDevice(let status):
+            return L10n.tr("Could not select microphone input device: %d", status)
         }
     }
 }
