@@ -1,7 +1,9 @@
 import AppKit
 import Foundation
 
-let rootURL = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? FileManager.default.currentDirectoryPath)
+let arguments = CommandLine.arguments.dropFirst()
+let rootURL = URL(fileURLWithPath: arguments.first(where: { !$0.hasPrefix("--") }) ?? FileManager.default.currentDirectoryPath)
+let appIconOnly = arguments.contains("--app-icon-only")
 let assetsURL = rootURL.appendingPathComponent("HoldToTalk/Assets.xcassets", isDirectory: true)
 let appIconURL = assetsURL.appendingPathComponent("AppIcon.appiconset", isDirectory: true)
 
@@ -18,6 +20,43 @@ extension NSColor {
         )
     }
 }
+
+private func colorAssetHex(named name: String) throws -> UInt32 {
+    let url = assetsURL
+        .appendingPathComponent("\(name).colorset", isDirectory: true)
+        .appendingPathComponent("Contents.json")
+
+    guard
+        let data = try? Data(contentsOf: url),
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let colors = json["colors"] as? [[String: Any]],
+        let color = colors.first?["color"] as? [String: Any],
+        let components = color["components"] as? [String: String],
+        let red = Double(components["red"] ?? ""),
+        let green = Double(components["green"] ?? ""),
+        let blue = Double(components["blue"] ?? "")
+    else {
+        throw NSError(
+            domain: "IconGeneration",
+            code: 2,
+            userInfo: [NSLocalizedDescriptionKey: "Could not read color asset \(name)"]
+        )
+    }
+
+    let r = UInt32((red * 255).rounded()).clamped(to: 0...255)
+    let g = UInt32((green * 255).rounded()).clamped(to: 0...255)
+    let b = UInt32((blue * 255).rounded()).clamped(to: 0...255)
+    return (r << 16) | (g << 8) | b
+}
+
+extension Comparable {
+    fileprivate func clamped(to limits: ClosedRange<Self>) -> Self {
+        min(max(self, limits.lowerBound), limits.upperBound)
+    }
+}
+
+let recordingAccentHex = try colorAssetHex(named: "RecordingAccent")
+let recordingAccentHighlightHex = try colorAssetHex(named: "RecordingAccentHighlight")
 
 private func withShadow(_ color: NSColor, blur: CGFloat, offset: NSSize, draw: () -> Void) {
     let shadow = NSShadow()
@@ -72,82 +111,62 @@ private func drawAppIcon(in rect: NSRect) {
         yRadius: scaled(214)
     )
 
-    withShadow(NSColor.black.withAlphaComponent(0.24), blur: scaled(34), offset: NSSize(width: 0, height: scaled(18))) {
-        NSColor.black.withAlphaComponent(0.12).setFill()
+    withShadow(NSColor.black.withAlphaComponent(0.32), blur: scaled(40), offset: NSSize(width: 0, height: scaled(22))) {
+        NSColor.black.withAlphaComponent(0.18).setFill()
         enclosure.fill()
     }
 
     NSGradient(colorsAndLocations:
-        (NSColor(hex: 0xf7fbfa), 0.0),
-        (NSColor(hex: 0xe3ece9), 0.48),
-        (NSColor(hex: 0xbfd2ce), 1.0)
+        (NSColor(hex: 0x2a2226), 0.0),
+        (NSColor(hex: 0x181317), 0.56),
+        (NSColor(hex: 0x100c10), 1.0)
     )?.draw(in: enclosure, angle: 90)
 
-    NSColor.white.withAlphaComponent(0.62).setStroke()
-    enclosure.lineWidth = scaled(3)
+    NSColor.white.withAlphaComponent(0.12).setStroke()
+    enclosure.lineWidth = scaled(2)
     enclosure.stroke()
 
-    let innerGlow = NSBezierPath(roundedRect: r(118, 114, 788, 788), xRadius: scaled(178), yRadius: scaled(178))
-    NSColor(hex: 0xffffff, alpha: 0.22).setStroke()
-    innerGlow.lineWidth = scaled(8)
-    innerGlow.stroke()
+    let innerRim = NSBezierPath(roundedRect: r(116, 112, 792, 792), xRadius: scaled(184), yRadius: scaled(184))
+    NSColor.white.withAlphaComponent(0.045).setStroke()
+    innerRim.lineWidth = scaled(6)
+    innerRim.stroke()
 
-    let base = NSBezierPath(roundedRect: r(206, 442, 612, 292), xRadius: scaled(108), yRadius: scaled(108))
-    withShadow(NSColor.black.withAlphaComponent(0.32), blur: scaled(30), offset: NSSize(width: 0, height: scaled(22))) {
-        NSGradient(colors: [NSColor(hex: 0x4b5358), NSColor(hex: 0x171b1f)])?.draw(in: base, angle: -90)
+    let waveBars: [(CGFloat, CGFloat, CGFloat)] = [
+        (386, 478, 250),
+        (512, 478, 334),
+        (638, 478, 250)
+    ]
+
+    for (x, centerY, height) in waveBars {
+        let bar = NSBezierPath(
+            roundedRect: r(x - 29, centerY - height / 2, 58, height),
+            xRadius: scaled(29),
+            yRadius: scaled(29)
+        )
+
+        withShadow(NSColor.black.withAlphaComponent(0.24), blur: scaled(18), offset: NSSize(width: 0, height: scaled(12))) {
+            NSGradient(colorsAndLocations:
+                (NSColor(hex: 0xffffff), 0.0),
+                (NSColor(hex: 0xf0f5ff), 0.50),
+                (NSColor(hex: 0xd9e2f0), 1.0)
+            )?.draw(in: bar, angle: 90)
+        }
+
+        NSColor.white.withAlphaComponent(0.18).setStroke()
+        bar.lineWidth = scaled(2)
+        bar.stroke()
     }
 
-    let keyTop = NSBezierPath(roundedRect: r(238, 382, 548, 304), xRadius: scaled(92), yRadius: scaled(92))
-    NSGradient(colorsAndLocations:
-        (NSColor(hex: 0x495258), 0.0),
-        (NSColor(hex: 0x2a3034), 0.52),
-        (NSColor(hex: 0x191d20), 1.0)
-    )?.draw(in: keyTop, angle: 90)
+    let holdGlow = NSBezierPath(roundedRect: r(388, 666, 248, 62), xRadius: scaled(31), yRadius: scaled(31))
+    NSColor(hex: recordingAccentHex, alpha: 0.12).setFill()
+    holdGlow.fill()
 
-    NSColor.white.withAlphaComponent(0.16).setStroke()
-    keyTop.lineWidth = scaled(3)
-    keyTop.stroke()
-
-    let lowerLip = NSBezierPath(roundedRect: r(274, 636, 476, 32), xRadius: scaled(16), yRadius: scaled(16))
-    NSGradient(colors: [NSColor(hex: 0x131719), NSColor(hex: 0x0b0d0e)])?.draw(in: lowerLip, angle: -90)
-
-    let highlight = NSBezierPath(roundedRect: r(316, 462, 392, 38), xRadius: scaled(19), yRadius: scaled(19))
-    NSColor(hex: 0x58d4ca, alpha: 0.86).setFill()
-    highlight.fill()
-
-    let highlightGlow = NSBezierPath(roundedRect: r(296, 450, 432, 64), xRadius: scaled(32), yRadius: scaled(32))
-    NSColor(hex: 0x58d4ca, alpha: 0.14).setFill()
-    highlightGlow.fill()
-
-    let micCapsule = NSBezierPath(roundedRect: r(422, 236, 180, 270), xRadius: scaled(90), yRadius: scaled(90))
-    withShadow(NSColor.black.withAlphaComponent(0.22), blur: scaled(18), offset: NSSize(width: 0, height: scaled(10))) {
-        NSGradient(colors: [NSColor(hex: 0xffffff), NSColor(hex: 0xdcebea)])?.draw(in: micCapsule, angle: 90)
-    }
-
-    NSColor(hex: 0x1d2428, alpha: 0.28).setStroke()
-    micCapsule.lineWidth = scaled(4)
-    micCapsule.stroke()
-
-    let stem = NSBezierPath()
-    stem.move(to: NSPoint(x: scaled(512), y: scaled(504)))
-    stem.line(to: NSPoint(x: scaled(512), y: scaled(594)))
-    stem.lineCapStyle = .round
-    NSColor(hex: 0xf4fbfa).setStroke()
-    stem.lineWidth = scaled(40)
-    stem.stroke()
-
-    let baseLine = NSBezierPath()
-    baseLine.move(to: NSPoint(x: scaled(444), y: scaled(616)))
-    baseLine.line(to: NSPoint(x: scaled(580), y: scaled(616)))
-    baseLine.lineCapStyle = .round
-    NSColor(hex: 0xf4fbfa).setStroke()
-    baseLine.lineWidth = scaled(38)
-    baseLine.stroke()
-
-    for x in [302, 358, 414] {
-        let notch = NSBezierPath(roundedRect: r(CGFloat(x), 562, 36, 36), xRadius: scaled(10), yRadius: scaled(10))
-        NSColor.white.withAlphaComponent(0.64).setFill()
-        notch.fill()
+    let holdLine = NSBezierPath(roundedRect: r(428, 684, 168, 22), xRadius: scaled(11), yRadius: scaled(11))
+    withShadow(NSColor(hex: recordingAccentHex, alpha: 0.28), blur: scaled(15), offset: NSSize(width: 0, height: scaled(6))) {
+        NSGradient(colors: [
+            NSColor(hex: recordingAccentHighlightHex),
+            NSColor(hex: recordingAccentHex)
+        ])?.draw(in: holdLine, angle: 0)
     }
 }
 
@@ -212,11 +231,13 @@ for (filename, size) in iconSizes {
     try writePNG(image(size: size, draw: drawAppIcon), to: appIconURL.appendingPathComponent(filename))
 }
 
-for kind in ["Idle", "Recording", "Transcribing"] {
-    let imagesetURL = assetsURL.appendingPathComponent("MenuBarIcon\(kind)Template.imageset", isDirectory: true)
-    try FileManager.default.createDirectory(at: imagesetURL, withIntermediateDirectories: true)
-    try writePNG(
-        image(size: 36) { drawMenuBarIcon(kind: kind, in: $0) },
-        to: imagesetURL.appendingPathComponent("MenuBarIcon\(kind)Template.png")
-    )
+if !appIconOnly {
+    for kind in ["Idle", "Recording", "Transcribing"] {
+        let imagesetURL = assetsURL.appendingPathComponent("MenuBarIcon\(kind)Template.imageset", isDirectory: true)
+        try FileManager.default.createDirectory(at: imagesetURL, withIntermediateDirectories: true)
+        try writePNG(
+            image(size: 36) { drawMenuBarIcon(kind: kind, in: $0) },
+            to: imagesetURL.appendingPathComponent("MenuBarIcon\(kind)Template.png")
+        )
+    }
 }

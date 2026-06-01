@@ -6,9 +6,19 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-01
+
 ### Changed
 
 - Reworked the recording overlay waveform into a live FFT-driven red bar visualizer with mirrored low-to-high frequency bands.
+- Replaced custom menu bar template image assets with SF Symbol status icons for idle, recording, and transcribing states.
+- Redesigned the app icon as a minimal dark voice mark with a recording-accent hold indicator.
+- Centralized recording accent colors in asset catalog color sets and reused them across the overlay, main UI, and icon generation.
+- Updated icon generation so the app icon reads recording accent colors from asset catalog assets.
+
+### Removed
+
+- Removed generated menu bar template image assets now covered by SF Symbols.
 
 ## [0.1.3] - 2026-05-22
 

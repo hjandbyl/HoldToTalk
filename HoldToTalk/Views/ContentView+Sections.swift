@@ -48,7 +48,7 @@ extension ContentView {
                     ProminentGlassButton(
                         title: controller.isRecording ? L10n.tr("Stop Test") : L10n.tr("Test Rec"),
                         systemImage: controller.isRecording ? "stop.fill" : "record.circle",
-                        tint: controller.isRecording ? .red : nil
+                        tint: controller.isRecording ? .recordingAccent : nil
                     ) {
                         controller.toggleManualRecording()
                     }
@@ -218,7 +218,7 @@ extension ContentView {
                     .fill(.tertiary.opacity(0.22))
 
                 Capsule()
-                    .fill(controller.isRecording ? Color.red : Color.accentColor)
+                    .fill(controller.isRecording ? Color.recordingAccent : Color.accentColor)
                     .frame(width: max(8, proxy.size.width * controller.inputLevel))
                     .opacity(controller.isRecording ? 1 : 0.45)
             }

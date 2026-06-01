@@ -136,7 +136,7 @@ struct TranscriptionOverlayView: View {
 
     @available(macOS 26.0, *)
     private var voiceGlass: Glass {
-        .regular.tint(Color.red.opacity(0.12))
+        .regular.tint(Color.recordingAccent.opacity(0.12))
     }
 
     @available(macOS 26.0, *)
@@ -294,7 +294,7 @@ private struct RecordingWaveform: View {
                             height: barHeight(for: sample, at: index, in: size)
                         )
                         .shadow(color: .black.opacity(isRecording ? 0.16 : 0.04), radius: 2.5, x: 0, y: 1.5)
-                        .shadow(color: Color.red.opacity(isRecording ? 0.18 : 0), radius: 5, x: 0, y: 0)
+                        .shadow(color: Color.recordingAccent.opacity(isRecording ? 0.18 : 0), radius: 5, x: 0, y: 0)
                 }
             }
             .frame(width: size.width, height: size.height, alignment: .center)
@@ -328,8 +328,8 @@ private struct RecordingWaveform: View {
         let intensity = min(1, max(0, sample))
         return LinearGradient(
             colors: [
-                Color.red.opacity(isRecording ? 0.86 + intensity * 0.12 : 0.28),
-                Color(red: 1.0, green: 0.24, blue: 0.20).opacity(isRecording ? 0.68 + intensity * 0.22 : 0.18)
+                Color.recordingAccent.opacity(isRecording ? 0.86 + intensity * 0.12 : 0.28),
+                Color.recordingAccentHighlight.opacity(isRecording ? 0.68 + intensity * 0.22 : 0.18)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing

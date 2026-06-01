@@ -36,7 +36,7 @@ struct HoldToTalkApp: App {
             MenuBarContent(controller: controller)
                 .environment(\.locale, appLanguage.locale)
         } label: {
-            MenuBarStatusIcon(imageName: controller.menuBarTemplateIconName)
+            MenuBarStatusIcon(systemName: controller.menuBarSystemImageName)
         }
         .menuBarExtraStyle(.menu)
     }
@@ -66,48 +66,14 @@ struct HoldToTalkApp: App {
 }
 
 private struct MenuBarStatusIcon: View {
-    let imageName: String
+    let systemName: String
 
     var body: some View {
-        if let image = MenuBarIconProvider.image(named: imageName) {
-            Image(nsImage: image)
-                .resizable()
-                .renderingMode(.template)
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 18, height: 18)
-                .accessibilityLabel("HoldToTalk")
-        } else {
-            Image(systemName: "mic")
-                .accessibilityLabel("HoldToTalk")
-        }
-    }
-}
-
-@MainActor
-private enum MenuBarIconProvider {
-    private static var cache: [String: NSImage] = [:]
-
-    static func image(named name: String) -> NSImage? {
-        if let cached = cache[name] {
-            return cached
-        }
-
-        if let image = NSImage(named: name) ?? resourceImage(named: name) {
-            image.isTemplate = true
-            image.size = NSSize(width: 18, height: 18)
-            cache[name] = image
-            return image
-        }
-
-        return nil
-    }
-
-    private static func resourceImage(named name: String) -> NSImage? {
-        guard let url = Bundle.main.url(forResource: name, withExtension: "png") else {
-            return nil
-        }
-
-        return NSImage(contentsOf: url)
+        Image(systemName: systemName)
+            .symbolRenderingMode(.monochrome)
+            .font(.system(size: 15, weight: .medium))
+            .frame(width: 18, height: 18, alignment: .center)
+            .accessibilityLabel("HoldToTalk")
     }
 }
 

@@ -30,7 +30,7 @@ extension ContentView {
 
                 Image(systemName: controller.headerSystemImage)
                     .font(.system(size: 32, weight: .semibold))
-                    .foregroundStyle(controller.isRecording ? Color.red : Color.accentColor)
+                    .foregroundStyle(controller.isRecording ? Color.recordingAccent : Color.accentColor)
             }
             .frame(width: 64, height: 64)
 
@@ -58,7 +58,7 @@ extension ContentView {
                 ProminentGlassButton(
                     title: controller.isRecording ? L10n.tr("Stop Test") : L10n.tr("Test Rec"),
                     systemImage: controller.isRecording ? "stop.fill" : "record.circle",
-                    tint: controller.isRecording ? .red : nil
+                    tint: controller.isRecording ? .recordingAccent : nil
                 ) {
                     controller.toggleManualRecording()
                 }
