@@ -36,7 +36,7 @@ struct HoldToTalkApp: App {
             MenuBarContent(controller: controller)
                 .environment(\.locale, appLanguage.locale)
         } label: {
-            MenuBarStatusIcon(systemName: controller.menuBarSystemImageName)
+            MenuBarStatusIcon(assetName: controller.menuBarIconAssetName)
         }
         .menuBarExtraStyle(.menu)
     }
@@ -66,13 +66,14 @@ struct HoldToTalkApp: App {
 }
 
 private struct MenuBarStatusIcon: View {
-    let systemName: String
+    let assetName: String
 
     var body: some View {
-        Image(systemName: systemName)
-            .symbolRenderingMode(.monochrome)
-            .font(.system(size: 15, weight: .medium))
-            .frame(width: 18, height: 18, alignment: .center)
+        Image(assetName)
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 19, height: 19, alignment: .center)
             .accessibilityLabel("HoldToTalk")
     }
 }

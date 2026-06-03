@@ -180,38 +180,62 @@ private func drawMenuBarIcon(kind: String, in rect: NSRect) {
     NSColor.black.setFill()
     NSColor.black.setStroke()
 
-    let capsule = NSBezierPath(roundedRect: r(13, 4, 10, 16), xRadius: scaled(5), yRadius: scaled(5))
-    capsule.fill()
+    let barHeights: [String: [CGFloat]] = [
+        "Recording": [22, 31, 22],
+        "Transcribing": [15, 27, 15]
+    ]
+    let heights = barHeights[kind] ?? [18, 27, 18]
+    let centers: [CGFloat] = [9, 18, 27]
+    let barWidth: CGFloat = 5.0
+    let yOffset: CGFloat = -1.75
 
-    let yoke = NSBezierPath()
-    yoke.move(to: NSPoint(x: scaled(9), y: scaled(13)))
-    yoke.curve(
-        to: NSPoint(x: scaled(27), y: scaled(13)),
-        controlPoint1: NSPoint(x: scaled(9), y: scaled(23)),
-        controlPoint2: NSPoint(x: scaled(27), y: scaled(23))
-    )
-    yoke.lineCapStyle = .round
-    yoke.lineWidth = scaled(3)
-    yoke.stroke()
+    for (x, height) in zip(centers, heights) {
+        let bar = NSBezierPath(
+            roundedRect: r(x - barWidth / 2, 3 + yOffset + (30 - height) / 2, barWidth, height),
+            xRadius: scaled(barWidth / 2),
+            yRadius: scaled(barWidth / 2)
+        )
+        bar.fill()
+    }
 
-    let stem = NSBezierPath()
-    stem.move(to: NSPoint(x: scaled(18), y: scaled(22)))
-    stem.line(to: NSPoint(x: scaled(18), y: scaled(27)))
-    stem.lineCapStyle = .round
-    stem.lineWidth = scaled(3)
-    stem.stroke()
-
-    let key = NSBezierPath(roundedRect: r(8, 27, 20, 6), xRadius: scaled(2.4), yRadius: scaled(2.4))
-    key.fill()
+    let holdLine = NSBezierPath(roundedRect: r(7, 30 + yOffset, 22, 4.5), xRadius: scaled(2.25), yRadius: scaled(2.25))
+    holdLine.fill()
 
     if kind == "Recording" {
-        NSBezierPath(ovalIn: r(25, 5, 6, 6)).fill()
+        let accent = NSBezierPath(roundedRect: r(30.4, 5 + yOffset, 4.5, 10), xRadius: scaled(2.25), yRadius: scaled(2.25))
+        accent.fill()
     } else if kind == "Transcribing" {
-        for (x, height) in [(5.0, 6.0), (28.0, 6.0)] {
-            let bar = NSBezierPath(roundedRect: r(CGFloat(x), 13, 3, CGFloat(height)), xRadius: scaled(1.5), yRadius: scaled(1.5))
-            bar.fill()
+        for y in [7.5, 15.0, 22.5] {
+            let dot = NSBezierPath(ovalIn: r(30.8, CGFloat(y) + yOffset, 4.2, 4.2))
+            dot.fill()
         }
     }
+}
+
+private func menuBarIconContentsJSON(filename1x: String, filename2x: String) throws -> Data {
+    let contents: [String: Any] = [
+        "images": [
+            [
+                "filename": filename1x,
+                "idiom": "universal",
+                "scale": "1x"
+            ],
+            [
+                "filename": filename2x,
+                "idiom": "universal",
+                "scale": "2x"
+            ]
+        ],
+        "info": [
+            "author": "xcode",
+            "version": 1
+        ],
+        "properties": [
+            "template-rendering-intent": "template"
+        ]
+    ]
+
+    return try JSONSerialization.data(withJSONObject: contents, options: [.prettyPrinted, .sortedKeys])
 }
 
 let iconSizes: [(String, Int)] = [
@@ -234,10 +258,18 @@ for (filename, size) in iconSizes {
 if !appIconOnly {
     for kind in ["Idle", "Recording", "Transcribing"] {
         let imagesetURL = assetsURL.appendingPathComponent("MenuBarIcon\(kind)Template.imageset", isDirectory: true)
+        let filename1x = "MenuBarIcon\(kind)Template.png"
+        let filename2x = "MenuBarIcon\(kind)Template@2x.png"
         try FileManager.default.createDirectory(at: imagesetURL, withIntermediateDirectories: true)
         try writePNG(
-            image(size: 36) { drawMenuBarIcon(kind: kind, in: $0) },
-            to: imagesetURL.appendingPathComponent("MenuBarIcon\(kind)Template.png")
+            image(size: 18) { drawMenuBarIcon(kind: kind, in: $0) },
+            to: imagesetURL.appendingPathComponent(filename1x)
         )
+        try writePNG(
+            image(size: 36) { drawMenuBarIcon(kind: kind, in: $0) },
+            to: imagesetURL.appendingPathComponent(filename2x)
+        )
+        let contentsData = try menuBarIconContentsJSON(filename1x: filename1x, filename2x: filename2x)
+        try contentsData.write(to: imagesetURL.appendingPathComponent("Contents.json"), options: .atomic)
     }
 }

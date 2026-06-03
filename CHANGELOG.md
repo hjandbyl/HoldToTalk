@@ -10,11 +10,13 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 - Added manual microphone input selection with an automatic system-default option.
 - Added a temporary API key reveal button for cloud recognition credentials.
+- Added generated template menu bar icons that match the app icon's voice-mark style.
 
 ### Changed
 
 - Removed the menu bar permissions request action so permission management stays in the main window.
 - Documented the requirement to update `CHANGELOG.md` before every commit.
+- Switched the menu bar extra from SF Symbols to generated asset-catalog template images.
 
 ## [0.1.4] - 2026-06-01
 

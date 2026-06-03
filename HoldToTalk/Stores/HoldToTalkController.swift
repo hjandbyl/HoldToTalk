@@ -100,10 +100,10 @@ final class HoldToTalkController: ObservableObject {
         return "keyboard"
     }
 
-    var menuBarSystemImageName: String {
-        if isRecording { return "waveform" }
-        if isTranscribing { return "text.bubble" }
-        return "mic"
+    var menuBarIconAssetName: String {
+        if isRecording { return "MenuBarIconRecordingTemplate" }
+        if isTranscribing { return "MenuBarIconTranscribingTemplate" }
+        return "MenuBarIconIdleTemplate"
     }
 
     var language: TranscriptionLanguage {
