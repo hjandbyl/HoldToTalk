@@ -21,6 +21,33 @@ struct MenuBarContent: View {
                 controller.setListeningEnabled(!controller.isEnabled)
             }
 
+            Menu(microphoneMenuTitle) {
+                inputDeviceMenuItem(
+                    title: L10n.tr("Auto (%@)", AudioDeviceInspector.defaultInputDeviceName()),
+                    uid: ""
+                )
+
+                ForEach(controller.availableInputDevices) { device in
+                    inputDeviceMenuItem(title: device.name, uid: device.id)
+                }
+
+                if !controller.selectedInputDeviceUID.isEmpty
+                    && !controller.availableInputDevices.contains(where: { $0.id == controller.selectedInputDeviceUID }) {
+                    Label(
+                        shortMenuTitle(L10n.tr("Selected microphone unavailable")),
+                        systemImage: "checkmark"
+                    )
+                    .disabled(true)
+                }
+
+                Divider()
+
+                Button(L10n.tr("Refresh")) {
+                    controller.refreshInputDeviceState()
+                }
+            }
+            .disabled(controller.isRecording)
+
             Divider()
 
             Text(AppVersion.displayText)
@@ -30,5 +57,30 @@ struct MenuBarContent: View {
             }
             .keyboardShortcut("q")
         }
+        .onAppear {
+            controller.refreshInputDeviceState()
+        }
+    }
+
+    private var microphoneMenuTitle: String {
+        shortMenuTitle(L10n.tr("Microphone: %@", controller.inputDeviceText))
+    }
+
+    @ViewBuilder
+    private func inputDeviceMenuItem(title: String, uid: String) -> some View {
+        Button {
+            controller.setInputDeviceUID(uid)
+        } label: {
+            if controller.selectedInputDeviceUID == uid {
+                Label(shortMenuTitle(title), systemImage: "checkmark")
+            } else {
+                Text(shortMenuTitle(title))
+            }
+        }
+    }
+
+    private func shortMenuTitle(_ title: String) -> String {
+        guard title.count > 30 else { return title }
+        return "\(title.prefix(27))..."
     }
 }

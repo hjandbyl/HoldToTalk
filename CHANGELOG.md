@@ -8,12 +8,15 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ### Added
 
+- Added microphone selection to the status bar menu with the current input shown in the top-level menu title.
 - Added manual microphone input selection with an automatic system-default option.
 - Added a temporary API key reveal button for cloud recognition credentials.
 - Added generated template menu bar icons that match the app icon's voice-mark style.
 
 ### Changed
 
+- Filtered Core Audio default aggregate input devices from user-facing microphone choices.
+- Tightened the settings microphone refresh button layout so it stays next to the device picker.
 - Removed the menu bar permissions request action so permission management stays in the main window.
 - Documented the requirement to update `CHANGELOG.md` before every commit.
 - Switched the menu bar extra from SF Symbols to generated asset-catalog template images.

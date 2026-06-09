@@ -87,27 +87,29 @@ extension ContentView {
                 }
 
                 labeledControlRow(L10n.tr("Microphone")) {
-                    Picker(L10n.tr("Microphone"), selection: inputDeviceSelection) {
-                        Text(L10n.tr("Auto (%@)", AudioDeviceInspector.defaultInputDeviceName())).tag("")
-                        ForEach(controller.availableInputDevices) { device in
-                            Text(device.name).tag(device.id)
+                    HStack(spacing: 8) {
+                        Picker(L10n.tr("Microphone"), selection: inputDeviceSelection) {
+                            Text(L10n.tr("Auto (%@)", AudioDeviceInspector.defaultInputDeviceName())).tag("")
+                            ForEach(controller.availableInputDevices) { device in
+                                Text(device.name).tag(device.id)
+                            }
+                            if !controller.selectedInputDeviceUID.isEmpty
+                                && !controller.availableInputDevices.contains(where: { $0.id == controller.selectedInputDeviceUID }) {
+                                Text(L10n.tr("Selected microphone unavailable")).tag(controller.selectedInputDeviceUID)
+                            }
                         }
-                        if !controller.selectedInputDeviceUID.isEmpty
-                            && !controller.availableInputDevices.contains(where: { $0.id == controller.selectedInputDeviceUID }) {
-                            Text(L10n.tr("Selected microphone unavailable")).tag(controller.selectedInputDeviceUID)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(width: 260, alignment: .leading)
-                    .disabled(controller.isRecording)
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 260, alignment: .leading)
+                        .disabled(controller.isRecording)
 
-                    Button {
-                        controller.refreshInputDeviceState()
-                    } label: {
-                        Label(L10n.tr("Refresh"), systemImage: "arrow.clockwise")
+                        Button {
+                            controller.refreshInputDeviceState()
+                        } label: {
+                            Label(L10n.tr("Refresh"), systemImage: "arrow.clockwise")
+                        }
+                        .disabled(controller.isRecording)
                     }
-                    .disabled(controller.isRecording)
                 }
 
                 labeledControlRow(L10n.tr("Punctuation")) {

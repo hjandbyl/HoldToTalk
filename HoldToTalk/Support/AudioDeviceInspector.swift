@@ -8,13 +8,16 @@ struct AudioInputDevice: Identifiable, Hashable {
 }
 
 enum AudioDeviceInspector {
+    private static let coreAudioDefaultAggregatePrefix = "CADefaultDeviceAggregate"
+
     static func inputDevices() -> [AudioInputDevice] {
         allDeviceIDs()
             .filter(hasInputStreams(deviceID:))
             .compactMap { deviceID in
                 guard
                     let uid = inputDeviceUID(deviceID: deviceID),
-                    let name = inputDeviceName(deviceID: deviceID)
+                    let name = inputDeviceName(deviceID: deviceID),
+                    isUserSelectableInputDevice(uid: uid, name: name)
                 else {
                     return nil
                 }
@@ -32,6 +35,10 @@ enum AudioDeviceInspector {
 
     static func inputDeviceID(uid: String) -> AudioDeviceID? {
         inputDevice(uid: uid)?.deviceID
+    }
+
+    static func isUserSelectableInputDeviceUID(_ uid: String) -> Bool {
+        !isCoreAudioDefaultAggregateIdentifier(uid)
     }
 
     static func defaultInputDeviceName() -> String {
@@ -185,5 +192,14 @@ enum AudioDeviceInspector {
         }
 
         return uid as String
+    }
+
+    private static func isUserSelectableInputDevice(uid: String, name: String) -> Bool {
+        !isCoreAudioDefaultAggregateIdentifier(uid)
+            && !isCoreAudioDefaultAggregateIdentifier(name)
+    }
+
+    private static func isCoreAudioDefaultAggregateIdentifier(_ value: String) -> Bool {
+        value.hasPrefix(coreAudioDefaultAggregatePrefix)
     }
 }

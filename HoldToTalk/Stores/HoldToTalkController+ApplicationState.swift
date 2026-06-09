@@ -166,11 +166,16 @@ extension HoldToTalkController {
     }
 
     static func loadInputDeviceUID() -> String {
-        UserDefaults.standard.string(forKey: inputDeviceDefaultsKey) ?? ""
+        let uid = UserDefaults.standard.string(forKey: inputDeviceDefaultsKey) ?? ""
+        guard AudioDeviceInspector.isUserSelectableInputDeviceUID(uid) else {
+            UserDefaults.standard.removeObject(forKey: inputDeviceDefaultsKey)
+            return ""
+        }
+        return uid
     }
 
     func setInputDeviceUID(_ uid: String) {
-        selectedInputDeviceUID = uid
+        selectedInputDeviceUID = AudioDeviceInspector.isUserSelectableInputDeviceUID(uid) ? uid : ""
     }
 
     func refreshInputDeviceState() {

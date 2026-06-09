@@ -97,6 +97,7 @@ enum L10n {
         "Insertion": "输入",
         "Paste recognized text automatically": "自动粘贴识别文本",
         "Microphone": "麦克风",
+        "Microphone: %@": "麦克风：%@",
         "Auto (%@)": "自动（%@）",
         "Selected microphone unavailable": "所选麦克风不可用",
         "Input Device": "输入设备",
