@@ -85,22 +85,6 @@ extension ContentView {
         }
     }
 
-    var appLanguageSelection: Binding<AppLanguage> {
-        Binding {
-            appLanguage
-        } set: { language in
-            appLanguageID = language.rawValue
-        }
-    }
-
-    var appDisplayModeSelection: Binding<AppDisplayMode> {
-        Binding {
-            AppDisplayMode(rawValue: appDisplayModeID) ?? AppDisplayModePreference.defaultMode
-        } set: { mode in
-            appDisplayModeID = mode.rawValue
-        }
-    }
-
     var inputDeviceSelection: Binding<String> {
         Binding {
             controller.selectedInputDeviceUID

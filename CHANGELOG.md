@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-06-11
+
 ### Added
 
 - Added microphone selection to the status bar menu with the current input shown in the top-level menu title.
@@ -20,6 +22,10 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 - Removed the menu bar permissions request action so permission management stays in the main window.
 - Documented the requirement to update `CHANGELOG.md` before every commit.
 - Switched the menu bar extra from SF Symbols to generated asset-catalog template images.
+
+### Fixed
+
+- Fixed a settings view crash caused by AppStorage-backed SwiftUI pickers when opening the Settings section.
 
 ## [0.1.4] - 2026-06-01
 

@@ -65,9 +65,9 @@ extension ContentView {
 
             VStack(alignment: .leading, spacing: 14) {
                 labeledControlRow(L10n.tr("Display Language")) {
-                    Picker(L10n.tr("Display Language"), selection: appLanguageSelection) {
+                    Picker(L10n.tr("Display Language"), selection: $appLanguageID) {
                         ForEach(AppLanguage.allCases) { language in
-                            Text(language.title).tag(language)
+                            Text(language.title).tag(language.rawValue)
                         }
                     }
                     .labelsHidden()
@@ -76,9 +76,9 @@ extension ContentView {
                 }
 
                 labeledControlRow(L10n.tr("Display In")) {
-                    Picker(L10n.tr("Display In"), selection: appDisplayModeSelection) {
+                    Picker(L10n.tr("Display In"), selection: $appDisplayModeID) {
                         ForEach(AppDisplayMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
+                            Text(mode.title).tag(mode.rawValue)
                         }
                     }
                     .labelsHidden()
