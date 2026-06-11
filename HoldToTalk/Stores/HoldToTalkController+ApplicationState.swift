@@ -167,7 +167,8 @@ extension HoldToTalkController {
 
     static func loadInputDeviceUID() -> String {
         let uid = UserDefaults.standard.string(forKey: inputDeviceDefaultsKey) ?? ""
-        guard AudioDeviceInspector.isUserSelectableInputDeviceUID(uid) else {
+        guard !uid.isEmpty else { return "" }
+        guard AudioDeviceInspector.inputDevice(uid: uid) != nil else {
             UserDefaults.standard.removeObject(forKey: inputDeviceDefaultsKey)
             return ""
         }
@@ -175,11 +176,23 @@ extension HoldToTalkController {
     }
 
     func setInputDeviceUID(_ uid: String) {
-        selectedInputDeviceUID = AudioDeviceInspector.isUserSelectableInputDeviceUID(uid) ? uid : ""
+        guard !uid.isEmpty, AudioDeviceInspector.inputDevice(uid: uid) != nil else {
+            selectedInputDeviceUID = ""
+            return
+        }
+
+        selectedInputDeviceUID = uid
     }
 
     func refreshInputDeviceState() {
-        availableInputDevices = AudioDeviceInspector.inputDevices()
+        let inputDevices = AudioDeviceInspector.inputDevices()
+        if !selectedInputDeviceUID.isEmpty,
+           !inputDevices.contains(where: { $0.id == selectedInputDeviceUID }) {
+            selectedInputDeviceUID = ""
+            return
+        }
+
+        availableInputDevices = inputDevices
         setIfChanged(\.inputDeviceText, AudioDeviceInspector.inputDeviceDisplayName(selectedUID: selectedInputDeviceUID))
     }
 

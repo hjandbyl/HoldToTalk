@@ -31,15 +31,6 @@ struct MenuBarContent: View {
                     inputDeviceMenuItem(title: device.name, uid: device.id)
                 }
 
-                if !controller.selectedInputDeviceUID.isEmpty
-                    && !controller.availableInputDevices.contains(where: { $0.id == controller.selectedInputDeviceUID }) {
-                    Label(
-                        shortMenuTitle(L10n.tr("Selected microphone unavailable")),
-                        systemImage: "checkmark"
-                    )
-                    .disabled(true)
-                }
-
                 Divider()
 
                 Button(L10n.tr("Refresh")) {

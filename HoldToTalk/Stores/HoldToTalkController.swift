@@ -19,7 +19,11 @@ final class HoldToTalkController: ObservableObject {
     @Published var availableInputDevices: [AudioInputDevice] = []
     @Published var selectedInputDeviceUID: String {
         didSet {
-            UserDefaults.standard.set(selectedInputDeviceUID, forKey: Self.inputDeviceDefaultsKey)
+            if selectedInputDeviceUID.isEmpty {
+                UserDefaults.standard.removeObject(forKey: Self.inputDeviceDefaultsKey)
+            } else {
+                UserDefaults.standard.set(selectedInputDeviceUID, forKey: Self.inputDeviceDefaultsKey)
+            }
             refreshInputDeviceState()
         }
     }

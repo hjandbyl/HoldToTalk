@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+### Fixed
+
+- Fall back to automatic microphone selection when the saved input device is no longer available.
+
 ## [0.1.5] - 2026-06-11
 
 ### Added

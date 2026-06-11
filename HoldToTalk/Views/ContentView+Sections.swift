@@ -93,10 +93,6 @@ extension ContentView {
                             ForEach(controller.availableInputDevices) { device in
                                 Text(device.name).tag(device.id)
                             }
-                            if !controller.selectedInputDeviceUID.isEmpty
-                                && !controller.availableInputDevices.contains(where: { $0.id == controller.selectedInputDeviceUID }) {
-                                Text(L10n.tr("Selected microphone unavailable")).tag(controller.selectedInputDeviceUID)
-                            }
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
