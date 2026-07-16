@@ -21,6 +21,7 @@ final class HoldToTalkController: ObservableObject {
         didSet {
             if selectedInputDeviceUID.isEmpty {
                 UserDefaults.standard.removeObject(forKey: Self.inputDeviceDefaultsKey)
+                UserDefaults.standard.removeObject(forKey: Self.inputDeviceNameDefaultsKey)
             } else {
                 UserDefaults.standard.set(selectedInputDeviceUID, forKey: Self.inputDeviceDefaultsKey)
             }
@@ -88,6 +89,7 @@ final class HoldToTalkController: ObservableObject {
     let shortcutDefaultsKey = "HoldToTalk.holdShortcut"
     let localSpeechModelDefaultsKey = "HoldToTalk.localSpeechModel"
     static let inputDeviceDefaultsKey = "HoldToTalk.inputDeviceUID"
+    static let inputDeviceNameDefaultsKey = "HoldToTalk.inputDeviceName"
     let minimumFnHoldDurationForRecognition: TimeInterval = 0.22
     static let manualRecordingTrigger = "Manual"
     static let removesTrailingSentencePeriodDefaultsKey = "HoldToTalk.removesTrailingSentencePeriod"
@@ -102,6 +104,27 @@ final class HoldToTalkController: ObservableObject {
         if isRecording { return "mic.circle.fill" }
         if isTranscribing { return "waveform.circle.fill" }
         return "keyboard"
+    }
+
+    var isSelectedInputDeviceUnavailable: Bool {
+        !selectedInputDeviceUID.isEmpty
+            && !availableInputDevices.contains { $0.id == selectedInputDeviceUID }
+    }
+
+    var unavailableSelectedInputDeviceTitle: String {
+        let savedName = Self.loadInputDeviceName()
+        guard !savedName.isEmpty else {
+            return L10n.tr("Selected microphone unavailable")
+        }
+        return L10n.tr("%@ (unavailable)", savedName)
+    }
+
+    var activeInputDeviceUID: String? {
+        guard !selectedInputDeviceUID.isEmpty,
+              availableInputDevices.contains(where: { $0.id == selectedInputDeviceUID }) else {
+            return nil
+        }
+        return selectedInputDeviceUID
     }
 
     var menuBarIconAssetName: String {

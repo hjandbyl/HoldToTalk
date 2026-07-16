@@ -90,6 +90,10 @@ extension ContentView {
                     HStack(spacing: 8) {
                         Picker(L10n.tr("Microphone"), selection: inputDeviceSelection) {
                             Text(L10n.tr("Auto (%@)", AudioDeviceInspector.defaultInputDeviceName())).tag("")
+                            if controller.isSelectedInputDeviceUnavailable {
+                                Text(controller.unavailableSelectedInputDeviceTitle)
+                                    .tag(controller.selectedInputDeviceUID)
+                            }
                             ForEach(controller.availableInputDevices) { device in
                                 Text(device.name).tag(device.id)
                             }

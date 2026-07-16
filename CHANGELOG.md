@@ -8,7 +8,7 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ### Fixed
 
-- Fall back to automatic microphone selection when the saved input device is no longer available.
+- Remember a manually selected microphone while it is disconnected, temporarily fall back to automatic input, and restore the preferred microphone when it reconnects.
 
 ## [0.1.5] - 2026-06-11
 

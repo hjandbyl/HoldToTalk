@@ -166,34 +166,45 @@ extension HoldToTalkController {
     }
 
     static func loadInputDeviceUID() -> String {
-        let uid = UserDefaults.standard.string(forKey: inputDeviceDefaultsKey) ?? ""
-        guard !uid.isEmpty else { return "" }
-        guard AudioDeviceInspector.inputDevice(uid: uid) != nil else {
-            UserDefaults.standard.removeObject(forKey: inputDeviceDefaultsKey)
-            return ""
-        }
-        return uid
+        UserDefaults.standard.string(forKey: inputDeviceDefaultsKey) ?? ""
+    }
+
+    static func loadInputDeviceName() -> String {
+        UserDefaults.standard.string(forKey: inputDeviceNameDefaultsKey) ?? ""
     }
 
     func setInputDeviceUID(_ uid: String) {
-        guard !uid.isEmpty, AudioDeviceInspector.inputDevice(uid: uid) != nil else {
+        guard !uid.isEmpty else {
             selectedInputDeviceUID = ""
             return
         }
 
+        guard let device = AudioDeviceInspector.inputDevice(uid: uid) else { return }
+        UserDefaults.standard.set(device.name, forKey: Self.inputDeviceNameDefaultsKey)
         selectedInputDeviceUID = uid
     }
 
     func refreshInputDeviceState() {
         let inputDevices = AudioDeviceInspector.inputDevices()
-        if !selectedInputDeviceUID.isEmpty,
-           !inputDevices.contains(where: { $0.id == selectedInputDeviceUID }) {
-            selectedInputDeviceUID = ""
+        availableInputDevices = inputDevices
+
+        guard !selectedInputDeviceUID.isEmpty else {
+            setIfChanged(\.inputDeviceText, AudioDeviceInspector.inputDeviceDisplayName(selectedUID: ""))
             return
         }
 
-        availableInputDevices = inputDevices
-        setIfChanged(\.inputDeviceText, AudioDeviceInspector.inputDeviceDisplayName(selectedUID: selectedInputDeviceUID))
+        if let selectedDevice = inputDevices.first(where: { $0.id == selectedInputDeviceUID }) {
+            UserDefaults.standard.set(selectedDevice.name, forKey: Self.inputDeviceNameDefaultsKey)
+            setIfChanged(\.inputDeviceText, selectedDevice.name)
+            return
+        }
+
+        let savedName = Self.loadInputDeviceName()
+        let defaultName = AudioDeviceInspector.defaultInputDeviceName()
+        let unavailableText = savedName.isEmpty
+            ? L10n.tr("Selected microphone unavailable; using Auto (%@)", defaultName)
+            : L10n.tr("%@ unavailable; using Auto (%@)", savedName, defaultName)
+        setIfChanged(\.inputDeviceText, unavailableText)
     }
 
     static func loadRemovesTrailingSentencePeriod() -> Bool {

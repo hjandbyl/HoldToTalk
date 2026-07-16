@@ -52,7 +52,7 @@ extension HoldToTalkController {
             let targetApplication = currentInsertionTargetApplication()
             recordingTargetApplication = targetApplication
             targetAppText = targetApplication?.localizedName ?? L10n.tr("No target app captured.")
-            let selectedInputDeviceUID = self.selectedInputDeviceUID.isEmpty ? nil : self.selectedInputDeviceUID
+            let selectedInputDeviceUID = activeInputDeviceUID
 
             if recognitionEngine.isCloud {
                 startCloudSession(sessionID: recognitionSessionID)

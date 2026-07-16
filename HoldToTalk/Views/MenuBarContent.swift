@@ -27,6 +27,13 @@ struct MenuBarContent: View {
                     uid: ""
                 )
 
+                if controller.isSelectedInputDeviceUnavailable {
+                    inputDeviceMenuItem(
+                        title: controller.unavailableSelectedInputDeviceTitle,
+                        uid: controller.selectedInputDeviceUID
+                    )
+                }
+
                 ForEach(controller.availableInputDevices) { device in
                     inputDeviceMenuItem(title: device.name, uid: device.id)
                 }
