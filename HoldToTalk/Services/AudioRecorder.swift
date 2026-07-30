@@ -22,8 +22,6 @@ final class AudioRecorder: @unchecked Sendable {
     private var inputFormatDescription = L10n.tr("Unknown")
     private var voiceProcessingDescription = L10n.tr("voice processing not started")
     private var inputSampleRate: Double = 0
-    private var inputChannelCount: AVAudioChannelCount = 1
-    private var inputFormat: AVAudioFormat?
     private var startedAt: Date?
     private var streamingConverter: AVAudioConverter?
     private var streamingOutputFormat: AVAudioFormat?
@@ -53,75 +51,51 @@ final class AudioRecorder: @unchecked Sendable {
         return Double(capturedFrames) / inputSampleRate
     }
 
-    func prepare(inputDeviceUID: String? = nil) throws {
-        if let engine, engine.isRunning {
-            return
-        }
-
-        try configureEngine(inputDeviceUID: inputDeviceUID)
-        try engine?.start()
-    }
-
     func start(
         inputDeviceUID: String? = nil,
         streamingChunkHandler: StreamingChunkHandler? = nil,
         inputAnalysisHandler: InputAnalysisHandler? = nil
     ) throws -> URL {
-        try prepare(inputDeviceUID: inputDeviceUID)
-
-        let inputFormat = try stateQueue.sync {
-            guard inputSampleRate > 0 else {
-                throw AudioRecorderError.noInputDevice
-            }
-
-            return self.inputFormat
-        }
-
-        guard let inputFormat else {
-            throw AudioRecorderError.couldNotCreateOutputFormat
-        }
-
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("HoldToTalk-\(UUID().uuidString)")
             .appendingPathExtension("wav")
 
-        let file = try AVAudioFile(forWriting: url, settings: inputFormat.settings)
-
         stateQueue.sync {
-            audioFile = file
+            audioFile = nil
             recordingURL = url
             capturedFrames = 0
             writeFailures = 0
+            inputFormatDescription = L10n.tr("Unknown")
+            inputSampleRate = 0
             startedAt = Date()
             self.streamingChunkHandler = streamingChunkHandler
             self.inputAnalysisHandler = inputAnalysisHandler
             pendingStreamingAudio.removeAll(keepingCapacity: true)
-            if streamingChunkHandler != nil {
-                configureStreamingConverterLocked(inputFormat: inputFormat)
-            }
         }
 
-        return url
+        do {
+            let engine = try configuredEngine(inputDeviceUID: inputDeviceUID)
+            stateQueue.sync {
+                self.engine = engine
+            }
+            try engine.start()
+            return url
+        } catch {
+            _ = stop()
+            try? FileManager.default.removeItem(at: url)
+            throw error
+        }
     }
 
-    private func configureEngine(inputDeviceUID: String?) throws {
+    private func configuredEngine(inputDeviceUID: String?) throws -> AVAudioEngine {
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
-        try configureInputDevice(inputDeviceUID, on: inputNode)
+        let selectedInputFormat = try configureInputDevice(inputDeviceUID, on: inputNode)
         configureVoiceProcessing(on: inputNode)
 
-        let inputFormat = inputNode.outputFormat(forBus: 0)
-
+        let inputFormat = selectedInputFormat ?? inputNode.outputFormat(forBus: 0)
         guard inputFormat.channelCount > 0 else {
             throw AudioRecorderError.noInputDevice
-        }
-
-        stateQueue.sync {
-            self.engine = engine
-            inputFormatDescription = "\(Int(inputFormat.sampleRate)) Hz, \(inputFormat.channelCount) ch"
-            inputSampleRate = inputFormat.sampleRate
-            inputChannelCount = inputFormat.channelCount
-            self.inputFormat = inputFormat
         }
 
         inputNode.removeTap(onBus: 0)
@@ -130,13 +104,15 @@ final class AudioRecorder: @unchecked Sendable {
         }
 
         engine.prepare()
+        return engine
     }
 
-    private func configureInputDevice(_ uid: String?, on inputNode: AVAudioInputNode) throws {
-        guard let uid, !uid.isEmpty else { return }
-        guard var deviceID = AudioDeviceInspector.inputDeviceID(uid: uid) else {
+    private func configureInputDevice(_ uid: String?, on inputNode: AVAudioInputNode) throws -> AVAudioFormat? {
+        guard let uid, !uid.isEmpty else { return nil }
+        guard let device = AudioDeviceInspector.inputDevice(uid: uid) else {
             throw AudioRecorderError.inputDeviceUnavailable
         }
+        var deviceID = device.deviceID
         guard let audioUnit = inputNode.audioUnit else {
             throw AudioRecorderError.couldNotAccessInputAudioUnit
         }
@@ -153,6 +129,12 @@ final class AudioRecorder: @unchecked Sendable {
         guard status == noErr else {
             throw AudioRecorderError.couldNotSelectInputDevice(status)
         }
+
+        guard let inputFormat = AudioDeviceInspector.inputCaptureFormat(deviceID: deviceID) else {
+            throw AudioRecorderError.couldNotReadInputFormat
+        }
+
+        return inputFormat
     }
 
     private func configureVoiceProcessing(on inputNode: AVAudioInputNode) {
@@ -176,7 +158,6 @@ final class AudioRecorder: @unchecked Sendable {
             streamingOutputFormat = nil
             let runningEngine = engine
             self.engine = nil
-            inputFormat = nil
             return (url, runningEngine)
         }
 
@@ -199,9 +180,20 @@ final class AudioRecorder: @unchecked Sendable {
         let spectrum = spectrumAnalyzer.spectrum(from: buffer)
 
         stateQueue.sync {
-            guard let audioFile else { return }
+            guard let recordingURL else { return }
 
             do {
+                if audioFile == nil {
+                    audioFile = try AVAudioFile(forWriting: recordingURL, settings: buffer.format.settings)
+                    inputFormatDescription = "\(Int(buffer.format.sampleRate)) Hz, \(buffer.format.channelCount) ch"
+                    inputSampleRate = buffer.format.sampleRate
+
+                    if streamingChunkHandler != nil {
+                        configureStreamingConverterLocked(inputFormat: buffer.format)
+                    }
+                }
+
+                guard let audioFile else { return }
                 try audioFile.write(from: buffer)
                 capturedFrames += AVAudioFramePosition(buffer.frameLength)
                 convertAndEmitStreamingAudioLocked(buffer)
@@ -432,23 +424,23 @@ private extension Array where Element == Double {
 
 enum AudioRecorderError: LocalizedError {
     case noInputDevice
-    case couldNotCreateOutputFormat
     case inputDeviceUnavailable
     case couldNotAccessInputAudioUnit
     case couldNotSelectInputDevice(OSStatus)
+    case couldNotReadInputFormat
 
     var errorDescription: String? {
         switch self {
         case .noInputDevice:
             return L10n.tr("No microphone input device is available.")
-        case .couldNotCreateOutputFormat:
-            return L10n.tr("Could not create the 16 kHz WAV recording format.")
         case .inputDeviceUnavailable:
             return L10n.tr("Selected microphone is not available.")
         case .couldNotAccessInputAudioUnit:
             return L10n.tr("Could not access microphone input unit.")
         case .couldNotSelectInputDevice(let status):
             return L10n.tr("Could not select microphone input device: %d", status)
+        case .couldNotReadInputFormat:
+            return L10n.tr("Could not read the selected microphone format.")
         }
     }
 }

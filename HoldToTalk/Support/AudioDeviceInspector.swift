@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreAudio
 import Foundation
 
@@ -33,8 +34,38 @@ enum AudioDeviceInspector {
         inputDevices().first { $0.id == uid }
     }
 
-    static func inputDeviceID(uid: String) -> AudioDeviceID? {
-        inputDevice(uid: uid)?.deviceID
+    static func inputCaptureFormat(deviceID: AudioDeviceID) -> AVAudioFormat? {
+        var streamDescription = AudioStreamBasicDescription()
+        var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamFormat,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        let status = AudioObjectGetPropertyData(
+            deviceID,
+            &address,
+            0,
+            nil,
+            &size,
+            &streamDescription
+        )
+
+        guard
+            status == noErr,
+            streamDescription.mSampleRate > 0,
+            streamDescription.mChannelsPerFrame > 0
+        else {
+            return nil
+        }
+
+        return AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: streamDescription.mSampleRate,
+            channels: streamDescription.mChannelsPerFrame,
+            interleaved: false
+        )
     }
 
     static func isUserSelectableInputDeviceUID(_ uid: String) -> Bool {

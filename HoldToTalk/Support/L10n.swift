@@ -259,6 +259,7 @@ enum L10n {
         "Selected microphone is not available.": "所选麦克风不可用。",
         "Could not access microphone input unit.": "无法访问麦克风输入单元。",
         "Could not select microphone input device: %d": "无法选择麦克风输入设备：%d",
+        "Could not read the selected microphone format.": "无法读取所选麦克风的音频格式。",
         "Could not create the 16 kHz WAV recording format.": "无法创建 16 kHz WAV 录音格式。",
         "Keychain operation failed with status %d.": "钥匙串操作失败，状态码 %d。",
         "Accessibility permission is required for global shortcut detection and text insertion.": "全局快捷键检测和文本插入需要辅助功能权限。",
