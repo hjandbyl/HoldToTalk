@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-08-10
+
 ### Fixed
 
 - Fixed manually selected microphones failing to capture when their input sample rate differs from the current output device by configuring the tap from the microphone's hardware format and initializing recording outputs from the first captured buffer.
