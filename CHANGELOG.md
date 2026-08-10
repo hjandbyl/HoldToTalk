@@ -9,6 +9,7 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 ### Fixed
 
 - Fixed manually selected microphones failing to capture when their input sample rate differs from the current output device by configuring the tap from the microphone's hardware format and initializing recording outputs from the first captured buffer.
+- Restored a selected USB microphone after a hub reconnect when macOS assigns it a new Core Audio UID, provided there is exactly one matching device name.
 
 ## [0.1.6] - 2026-07-22
 

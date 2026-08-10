@@ -200,6 +200,14 @@ extension HoldToTalkController {
         }
 
         let savedName = Self.loadInputDeviceName()
+        let reconnectCandidates = inputDevices.filter { $0.name == savedName }
+        if !savedName.isEmpty,
+           reconnectCandidates.count == 1,
+           let reconnectedDevice = reconnectCandidates.first {
+            selectedInputDeviceUID = reconnectedDevice.id
+            return
+        }
+
         let defaultName = AudioDeviceInspector.defaultInputDeviceName()
         let unavailableText = savedName.isEmpty
             ? L10n.tr("Selected microphone unavailable; using Auto (%@)", defaultName)
