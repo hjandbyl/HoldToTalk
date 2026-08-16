@@ -38,7 +38,7 @@ struct HoldToTalkApp: App {
         } label: {
             MenuBarStatusIcon(assetName: controller.menuBarIconAssetName)
         }
-        .menuBarExtraStyle(.menu)
+        .menuBarExtraStyle(.window)
     }
 
     private var mainWindowScene: some Scene {

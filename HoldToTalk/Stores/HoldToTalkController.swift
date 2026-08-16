@@ -83,6 +83,7 @@ final class HoldToTalkController: ObservableObject {
     var activeRecognitionSessionID = 0
     var overlayHideTask: Task<Void, Never>?
     var recordingStartedAt: Date?
+    var recordingStopTask: Task<Void, Never>?
     var hasShortcutEvent = false
     var hasRecordingInfo = false
 
@@ -91,6 +92,7 @@ final class HoldToTalkController: ObservableObject {
     static let inputDeviceDefaultsKey = "HoldToTalk.inputDeviceUID"
     static let inputDeviceNameDefaultsKey = "HoldToTalk.inputDeviceName"
     let minimumFnHoldDurationForRecognition: TimeInterval = 0.22
+    let recordingTailPadding: TimeInterval = 0.35
     static let manualRecordingTrigger = "Manual"
     static let removesTrailingSentencePeriodDefaultsKey = "HoldToTalk.removesTrailingSentencePeriod"
     static let percentFormatter: NumberFormatter = {
@@ -236,6 +238,7 @@ final class HoldToTalkController: ObservableObject {
                 await qwenASRTranscriber.cancel()
             }
         }
+
     }
 
     func requestMicrophonePermission() {

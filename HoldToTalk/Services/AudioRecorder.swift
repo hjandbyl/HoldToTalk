@@ -22,7 +22,6 @@ final class AudioRecorder: @unchecked Sendable {
     private var inputFormatDescription = L10n.tr("Unknown")
     private var voiceProcessingDescription = L10n.tr("voice processing not started")
     private var inputSampleRate: Double = 0
-    private var startedAt: Date?
     private var streamingConverter: AVAudioConverter?
     private var streamingOutputFormat: AVAudioFormat?
     private var streamingChunkHandler: StreamingChunkHandler?
@@ -32,12 +31,11 @@ final class AudioRecorder: @unchecked Sendable {
     private static let streamingChunkByteCount = 6_400
     static let spectrumBandCount = 25
 
-    var captureSummary: String {
+    func captureSummary(heldDuration: TimeInterval) -> String {
         stateQueue.sync {
-            let elapsed = startedAt.map { Date().timeIntervalSince($0) } ?? 0
             return L10n.tr(
                 "held %.2fs, captured %.2fs, write failures %d, format %@, %@",
-                elapsed,
+                heldDuration,
                 capturedDuration,
                 writeFailures,
                 inputFormatDescription,
@@ -67,7 +65,6 @@ final class AudioRecorder: @unchecked Sendable {
             writeFailures = 0
             inputFormatDescription = L10n.tr("Unknown")
             inputSampleRate = 0
-            startedAt = Date()
             self.streamingChunkHandler = streamingChunkHandler
             self.inputAnalysisHandler = inputAnalysisHandler
             pendingStreamingAudio.removeAll(keepingCapacity: true)
@@ -98,8 +95,11 @@ final class AudioRecorder: @unchecked Sendable {
             throw AudioRecorderError.noInputDevice
         }
 
+        let tapBufferSize: AVAudioFrameCount = AudioDeviceInspector.isBluetoothInputDevice(uid: inputDeviceUID)
+            ? 512
+            : 2_048
         inputNode.removeTap(onBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 2_048, format: inputFormat) { [weak self] buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: tapBufferSize, format: inputFormat) { [weak self] buffer, _ in
             self?.write(buffer)
         }
 

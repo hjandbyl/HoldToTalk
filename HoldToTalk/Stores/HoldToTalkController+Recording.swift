@@ -13,6 +13,10 @@ extension HoldToTalkController {
             : L10n.tr("%@ up %@", holdShortcut.displayName, eventTime)
 
         if isDown {
+            if recordingStopTask != nil {
+                recordingStopTask?.cancel()
+                recordingStopTask = nil
+            }
             guard !isRecording else { return }
             startRecording(trigger: holdShortcut.displayName)
         } else if isRecording {
@@ -21,6 +25,9 @@ extension HoldToTalkController {
     }
 
     func startRecording(trigger: String) {
+        recordingStopTask?.cancel()
+        recordingStopTask = nil
+
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
             statusMessage = L10n.tr("Microphone permission is required.")
             requestMicrophonePermission()
@@ -84,15 +91,28 @@ extension HoldToTalkController {
     }
 
     func stopRecordingAndTranscribe() {
-        let pendingCloudAudio = recognitionEngine.isCloud ? recorder.takePendingStreamingAudio() : nil
+        guard recordingStopTask == nil else { return }
+
+        let heldDuration = recordingStartedAt.map { Date().timeIntervalSince($0) } ?? .infinity
+        recordingStopTask = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: .seconds(self.recordingTailPadding))
+            guard !Task.isCancelled else { return }
+
+            self.recordingStopTask = nil
+            self.finishRecordingAndTranscribe(heldDuration: heldDuration)
+        }
+    }
+
+    private func finishRecordingAndTranscribe(heldDuration: TimeInterval) {
+        let selectedEngine = recognitionEngine
         let audioURL = recorder.stop() ?? currentRecordingURL
+        let pendingCloudAudio = selectedEngine.isCloud ? recorder.takePendingStreamingAudio() : nil
         let trigger = recordingTrigger
         let targetApplication = recordingTargetApplication
-        let captureSummary = recorder.captureSummary
+        let captureSummary = recorder.captureSummary(heldDuration: heldDuration)
         let inputDevice = inputDeviceText
-        let selectedEngine = recognitionEngine
         let recognitionSessionID = activeRecognitionSessionID
-        let heldDuration = recordingStartedAt.map { Date().timeIntervalSince($0) } ?? .infinity
 
         currentRecordingURL = nil
         recordingTargetApplication = nil

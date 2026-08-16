@@ -6,22 +6,35 @@ struct MenuBarContent: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Group {
-            Button(L10n.tr("Open HoldToTalk")) {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
                 openWindow(id: "main")
                 NSApp.activate(ignoringOtherApps: true)
+            } label: {
+                Label(L10n.tr("Open HoldToTalk"), systemImage: "macwindow")
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .buttonStyle(.borderless)
 
             Divider()
 
             Text(controller.statusMessage)
                 .lineLimit(1)
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
-            Button(controller.isEnabled ? L10n.tr("Pause Listening") : L10n.tr("Resume Listening")) {
+            Button {
                 controller.setListeningEnabled(!controller.isEnabled)
+            } label: {
+                Label(
+                    controller.isEnabled ? L10n.tr("Pause Listening") : L10n.tr("Resume Listening"),
+                    systemImage: controller.isEnabled ? "pause.fill" : "play.fill"
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .buttonStyle(.borderless)
 
-            Menu(microphoneMenuTitle) {
+            Menu {
                 inputDeviceMenuItem(
                     title: L10n.tr("Auto (%@)", AudioDeviceInspector.defaultInputDeviceName()),
                     uid: ""
@@ -43,18 +56,39 @@ struct MenuBarContent: View {
                 Button(L10n.tr("Refresh")) {
                     controller.refreshInputDeviceState()
                 }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "mic.fill")
+                    Text(microphoneMenuTitle)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .menuStyle(.button)
             .disabled(controller.isRecording)
 
             Divider()
 
-            Text(AppVersion.displayText)
+            HStack {
+                Text(AppVersion.displayText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-            Button(L10n.tr("Quit")) {
-                NSApp.terminate(nil)
+                Spacer()
+
+                Button(L10n.tr("Quit")) {
+                    NSApp.terminate(nil)
+                }
+                .buttonStyle(.borderless)
+                .keyboardShortcut("q")
             }
-            .keyboardShortcut("q")
         }
+        .padding(12)
+        .frame(width: 300)
         .onAppear {
             controller.refreshInputDeviceState()
         }

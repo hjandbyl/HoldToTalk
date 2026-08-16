@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+### Changed
+
+- Redesigned the status bar panel as a window-style menu with icons and a compact layout, so it stays open after selecting a microphone and additional controls remain immediately available.
+
+### Fixed
+
+- Reduced Bluetooth microphone capture latency and added a short release-tail window so headset buffering is less likely to drop the beginning or end of hold-to-talk speech without keeping the microphone active while idle.
+
 ## [0.1.7] - 2026-08-10
 
 ### Fixed

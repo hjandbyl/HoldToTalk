@@ -6,6 +6,7 @@ struct AudioInputDevice: Identifiable, Hashable {
     let id: String
     let name: String
     let deviceID: AudioDeviceID
+    let isBluetooth: Bool
 }
 
 enum AudioDeviceInspector {
@@ -23,7 +24,12 @@ enum AudioDeviceInspector {
                     return nil
                 }
 
-                return AudioInputDevice(id: uid, name: name, deviceID: deviceID)
+                return AudioInputDevice(
+                    id: uid,
+                    name: name,
+                    deviceID: deviceID,
+                    isBluetooth: isBluetoothInputDevice(deviceID: deviceID)
+                )
             }
             .sorted { lhs, rhs in
                 lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
@@ -86,7 +92,17 @@ enum AudioDeviceInspector {
             return nil
         }
 
-        return AudioInputDevice(id: uid, name: name, deviceID: deviceID)
+        return AudioInputDevice(
+            id: uid,
+            name: name,
+            deviceID: deviceID,
+            isBluetooth: isBluetoothInputDevice(deviceID: deviceID)
+        )
+    }
+
+    static func isBluetoothInputDevice(uid: String?) -> Bool {
+        let device = uid.flatMap(inputDevice(uid:)) ?? defaultInputDevice()
+        return device?.isBluetooth == true
     }
 
     static func inputDeviceDisplayName(selectedUID: String) -> String {
@@ -169,6 +185,29 @@ enum AudioDeviceInspector {
         }
 
         return size >= MemoryLayout<AudioStreamID>.size
+    }
+
+    private static func isBluetoothInputDevice(deviceID: AudioDeviceID) -> Bool {
+        var transportType = UInt32(0)
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        let status = AudioObjectGetPropertyData(
+            deviceID,
+            &address,
+            0,
+            nil,
+            &size,
+            &transportType
+        )
+
+        guard status == noErr else { return false }
+        return transportType == kAudioDeviceTransportTypeBluetooth
+            || transportType == kAudioDeviceTransportTypeBluetoothLE
     }
 
     private static func inputDeviceName(deviceID: AudioDeviceID) -> String? {
