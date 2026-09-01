@@ -1,4 +1,5 @@
 import AVFoundation
+import Accelerate
 import CSherpaOnnx
 import Darwin
 import Foundation
@@ -11,11 +12,11 @@ actor SherpaOnnxClient {
     }
 
     func transcribe(audioURL: URL, language: String, model: LocalSpeechModel) async throws -> String {
-        let audio = try loadMonoSamples(from: audioURL)
-        guard !audio.samples.isEmpty else { return "" }
+        let audioFile = try AVAudioFile(forReading: audioURL)
+        guard audioFile.length > 0 else { return "" }
 
         let recognizer = try recognizer(language: language, model: model)
-        return try recognizer.transcribe(samples: audio.samples, sampleRate: audio.sampleRate)
+        return try recognizer.transcribe(audioFile: audioFile)
     }
 
     func clearCache() {
@@ -48,42 +49,6 @@ actor SherpaOnnxClient {
         }
     }
 
-    private func loadMonoSamples(from audioURL: URL) throws -> (samples: [Float], sampleRate: Int32) {
-        let audioFile = try AVAudioFile(forReading: audioURL)
-        let inputFormat = audioFile.processingFormat
-        let frameCount = AVAudioFrameCount(audioFile.length)
-
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: frameCount) else {
-            throw SherpaOnnxClientError.couldNotReadAudio
-        }
-
-        try audioFile.read(into: buffer)
-
-        guard let floatData = buffer.floatChannelData else {
-            throw SherpaOnnxClientError.unsupportedAudioFormat
-        }
-
-        let channelCount = Int(buffer.format.channelCount)
-        let frames = Int(buffer.frameLength)
-        guard channelCount > 0, frames > 0 else {
-            return ([], Int32(inputFormat.sampleRate))
-        }
-
-        if channelCount == 1 {
-            return (Array(UnsafeBufferPointer(start: floatData[0], count: frames)), Int32(inputFormat.sampleRate))
-        }
-
-        var samples = [Float](repeating: 0, count: frames)
-        for channel in 0..<channelCount {
-            let channelSamples = UnsafeBufferPointer(start: floatData[channel], count: frames)
-            for index in 0..<frames {
-                samples[index] += channelSamples[index] / Float(channelCount)
-            }
-        }
-
-        return (samples, Int32(inputFormat.sampleRate))
-    }
-
     private func modelDirectory(for model: LocalSpeechModel) throws -> URL {
         guard let directory = LocalSpeechModelStore.installedDirectory(for: model) else {
             throw SherpaOnnxClientError.modelNotFound(model.displayTitle)
@@ -94,6 +59,8 @@ actor SherpaOnnxClient {
 }
 
 private final class OfflineLocalSpeechRecognizer: @unchecked Sendable {
+    private static let audioBufferFrameCount: AVAudioFrameCount = 16_384
+
     private let recognizer: OpaquePointer
     private let cStrings: [CStringHandle]
 
@@ -145,7 +112,7 @@ private final class OfflineLocalSpeechRecognizer: @unchecked Sendable {
         SherpaOnnxDestroyOfflineRecognizer(recognizer)
     }
 
-    func transcribe(samples: [Float], sampleRate: Int32) throws -> String {
+    func transcribe(audioFile: AVAudioFile) throws -> String {
         guard let stream = SherpaOnnxCreateOfflineStream(recognizer) else {
             throw SherpaOnnxClientError.couldNotCreateStream
         }
@@ -153,8 +120,67 @@ private final class OfflineLocalSpeechRecognizer: @unchecked Sendable {
             SherpaOnnxDestroyOfflineStream(stream)
         }
 
-        samples.withUnsafeBufferPointer { pointer in
-            SherpaOnnxAcceptWaveformOffline(stream, sampleRate, pointer.baseAddress, Int32(pointer.count))
+        let inputFormat = audioFile.processingFormat
+        let bufferCapacity = AVAudioFrameCount(
+            min(audioFile.length, AVAudioFramePosition(Self.audioBufferFrameCount))
+        )
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: bufferCapacity) else {
+            throw SherpaOnnxClientError.couldNotReadAudio
+        }
+
+        let channelCount = Int(inputFormat.channelCount)
+        guard channelCount > 0 else {
+            throw SherpaOnnxClientError.unsupportedAudioFormat
+        }
+
+        var monoSamples = [Float](repeating: 0, count: Int(bufferCapacity))
+        let sampleRate = Int32(inputFormat.sampleRate)
+
+        while audioFile.framePosition < audioFile.length {
+            let framesToRead = AVAudioFrameCount(
+                min(audioFile.length - audioFile.framePosition, AVAudioFramePosition(buffer.frameCapacity))
+            )
+            try audioFile.read(into: buffer, frameCount: framesToRead)
+            guard buffer.frameLength > 0 else { break }
+            guard let floatData = buffer.floatChannelData else {
+                throw SherpaOnnxClientError.unsupportedAudioFormat
+            }
+
+            let frameCount = Int(buffer.frameLength)
+            if channelCount == 1 {
+                SherpaOnnxAcceptWaveformOffline(stream, sampleRate, floatData[0], Int32(frameCount))
+                continue
+            }
+
+            monoSamples.withUnsafeMutableBufferPointer { monoBuffer in
+                vDSP_vclr(monoBuffer.baseAddress!, 1, vDSP_Length(frameCount))
+                for channel in 0..<channelCount {
+                    vDSP_vadd(
+                        monoBuffer.baseAddress!,
+                        1,
+                        floatData[channel],
+                        1,
+                        monoBuffer.baseAddress!,
+                        1,
+                        vDSP_Length(frameCount)
+                    )
+                }
+                var scale = 1 / Float(channelCount)
+                vDSP_vsmul(
+                    monoBuffer.baseAddress!,
+                    1,
+                    &scale,
+                    monoBuffer.baseAddress!,
+                    1,
+                    vDSP_Length(frameCount)
+                )
+                SherpaOnnxAcceptWaveformOffline(
+                    stream,
+                    sampleRate,
+                    monoBuffer.baseAddress,
+                    Int32(frameCount)
+                )
+            }
         }
         SherpaOnnxDecodeOfflineStream(recognizer, stream)
 

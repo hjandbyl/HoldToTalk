@@ -9,10 +9,17 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 ### Changed
 
 - Redesigned the status bar panel as a window-style menu with icons and a compact layout, so it stays open after selecting a microphone and additional controls remain immediately available.
+- Streamed long recordings through chunked reads instead of loading the whole file into memory when computing last-recording stats and when transcribing with local sherpa-onnx models.
+- Replaced per-sample loops with Accelerate (vDSP) routines for audio level, spectrum, recording analysis, and stereo-to-mono downmix, and reused analysis buffers to cut CPU and allocation pressure during capture.
+- Shared a single observable input level/spectrum state between the settings level meter and the recording overlay, throttled to about 20 updates per second to keep the UI responsive.
+- Moved last-recording audio analysis off the main actor so the interface no longer blocks right after a recording.
+- Throttled local model download progress callbacks so they do not flood the UI.
 
 ### Fixed
 
 - Reduced Bluetooth microphone capture latency and added a short release-tail window so headset buffering is less likely to drop the beginning or end of hold-to-talk speech without keeping the microphone active while idle.
+- Refreshed the microphone list immediately when audio devices are added or removed instead of only on a fixed timer, and refreshed permission and model state when the app becomes active.
+- Stopped permission polling once all required permissions were granted, and prevented deleting a local model while recording or transcribing with a visible in-progress state.
 
 ## [0.1.7] - 2026-08-10
 

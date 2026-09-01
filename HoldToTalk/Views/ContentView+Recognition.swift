@@ -93,8 +93,9 @@ extension ContentView {
 
     func localSpeechModelRow(_ model: LocalSpeechModel) -> some View {
         let isSelected = controller.selectedLocalSpeechModel == model
-        let isInstalled = LocalSpeechModelStore.isInstalled(model)
+        let isInstalled = controller.isLocalSpeechModelInstalled(model)
         let isDownloading = controller.downloadingLocalSpeechModelID == model.id
+        let isDeleting = controller.deletingLocalSpeechModelIDs.contains(model.id)
 
         return Button {
             controller.setLocalSpeechModel(model)
@@ -117,7 +118,12 @@ extension ContentView {
 
                 Spacer(minLength: 8)
 
-                modelActionButton(model: model, isInstalled: isInstalled, isDownloading: isDownloading)
+                modelActionButton(
+                    model: model,
+                    isInstalled: isInstalled,
+                    isDownloading: isDownloading,
+                    isDeleting: isDeleting
+                )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -129,8 +135,16 @@ extension ContentView {
     }
 
     @ViewBuilder
-    func modelActionButton(model: LocalSpeechModel, isInstalled: Bool, isDownloading: Bool) -> some View {
-        if isDownloading {
+    func modelActionButton(
+        model: LocalSpeechModel,
+        isInstalled: Bool,
+        isDownloading: Bool,
+        isDeleting: Bool
+    ) -> some View {
+        if isDeleting {
+            ProgressView()
+                .controlSize(.small)
+        } else if isDownloading {
             Button {
                 controller.cancelLocalSpeechModelDownload()
             } label: {
@@ -144,7 +158,12 @@ extension ContentView {
                 Label(L10n.tr("Delete Model"), systemImage: "trash")
             }
             .buttonStyle(.borderless)
-            .disabled(controller.isDownloadingLocalSpeechModel)
+            .disabled(
+                controller.isRecording
+                    || controller.isTranscribing
+                    || controller.isDownloadingLocalSpeechModel
+                    || !controller.deletingLocalSpeechModelIDs.isEmpty
+            )
         } else {
             Button {
                 controller.downloadLocalSpeechModel(model)
@@ -152,7 +171,7 @@ extension ContentView {
                 Label(L10n.tr("Download"), systemImage: "arrow.down.circle")
             }
             .buttonStyle(.borderless)
-            .disabled(controller.isDownloadingLocalSpeechModel)
+            .disabled(controller.isDownloadingLocalSpeechModel || !controller.deletingLocalSpeechModelIDs.isEmpty)
         }
     }
 

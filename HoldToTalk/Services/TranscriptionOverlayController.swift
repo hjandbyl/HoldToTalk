@@ -96,6 +96,7 @@ final class TranscriptionOverlayController {
         let hostingView = NSHostingView(
             rootView: TranscriptionOverlayView(
                 controller: controller,
+                liveTranscription: controller.liveTranscription,
                 presentation: presentation
             )
         )

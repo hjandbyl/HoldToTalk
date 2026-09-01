@@ -9,7 +9,11 @@ enum PermissionHelper {
     }
 
     static var microphoneStatusText: String {
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        microphoneStatusText(for: AVCaptureDevice.authorizationStatus(for: .audio))
+    }
+
+    static func microphoneStatusText(for status: AVAuthorizationStatus) -> String {
+        switch status {
         case .authorized:
             return L10n.tr("Granted")
         case .denied:

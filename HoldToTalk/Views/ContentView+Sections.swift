@@ -238,19 +238,31 @@ extension ContentView {
     }
 
     var inputLevelMeter: some View {
+        AudioInputLevelMeter(
+            visualization: controller.inputVisualization,
+            isRecording: controller.isRecording
+        )
+        .accessibilityLabel(L10n.tr("Input level"))
+    }
+
+}
+
+private struct AudioInputLevelMeter: View {
+    @ObservedObject var visualization: AudioInputVisualization
+    let isRecording: Bool
+
+    var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 Capsule()
                     .fill(.tertiary.opacity(0.22))
 
                 Capsule()
-                    .fill(controller.isRecording ? Color.recordingAccent : Color.accentColor)
-                    .frame(width: max(8, proxy.size.width * controller.inputLevel))
-                    .opacity(controller.isRecording ? 1 : 0.45)
+                    .fill(isRecording ? Color.recordingAccent : Color.accentColor)
+                    .frame(width: max(8, proxy.size.width * visualization.snapshot.level))
+                    .opacity(isRecording ? 1 : 0.45)
             }
         }
         .frame(height: 6)
-        .accessibilityLabel(L10n.tr("Input level"))
     }
-
 }

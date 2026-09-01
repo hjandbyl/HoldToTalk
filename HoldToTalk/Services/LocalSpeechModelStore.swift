@@ -122,6 +122,7 @@ private final class DownloadOperation: NSObject, URLSessionDownloadDelegate, @un
     private let progressHandler: (@Sendable (Double) async -> Void)?
     private var continuation: CheckedContinuation<URL, Error>?
     private var session: URLSession?
+    private var lastProgressUpdateTime: TimeInterval = 0
 
     init(progressHandler: (@Sendable (Double) async -> Void)?) {
         self.progressHandler = progressHandler
@@ -158,6 +159,9 @@ private final class DownloadOperation: NSObject, URLSessionDownloadDelegate, @un
     ) {
         guard totalBytesExpectedToWrite > 0 else { return }
         let progress = min(1, max(0, Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)))
+        let now = ProcessInfo.processInfo.systemUptime
+        guard progress >= 1 || now - lastProgressUpdateTime >= 0.25 else { return }
+        lastProgressUpdateTime = now
         Task {
             await progressHandler?(progress)
         }

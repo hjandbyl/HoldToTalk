@@ -9,11 +9,13 @@ extension HoldToTalkController {
     }
 
     func refreshVolcengineAPIKeyState() {
-        volcengineAPIKeyStatusText = VolcengineCredentialStore.apiKey() == nil ? L10n.tr("Not set") : L10n.tr("Saved in Keychain")
+        hasVolcengineAPIKey = VolcengineCredentialStore.apiKey() != nil
+        setIfChanged(\.volcengineAPIKeyStatusText, hasVolcengineAPIKey ? L10n.tr("Saved in Keychain") : L10n.tr("Not set"))
     }
 
     func refreshQwenASRAPIKeyState() {
-        qwenASRAPIKeyStatusText = QwenASRCredentialStore.apiKey() == nil ? L10n.tr("Not set") : L10n.tr("Saved in Keychain")
+        hasQwenASRAPIKey = QwenASRCredentialStore.apiKey() != nil
+        setIfChanged(\.qwenASRAPIKeyStatusText, hasQwenASRAPIKey ? L10n.tr("Saved in Keychain") : L10n.tr("Not set"))
     }
 
     func needsAPIKey(for engine: RecognitionEngine) -> Bool {
@@ -113,17 +115,48 @@ extension HoldToTalkController {
     }
 
     func startPermissionPolling() {
-        permissionRefreshTask?.cancel()
+        guard permissionRefreshTask == nil else { return }
+        guard requiresFrequentPermissionPolling else { return }
+
         permissionRefreshTask = Task { [weak self] in
+            defer { self?.permissionRefreshTask = nil }
+
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
 
-                guard let self else { return }
+                guard let self, !Task.isCancelled else { return }
                 self.refreshPermissionStatus()
 
                 if self.isEnabled, !self.keyMonitor.isRunning, self.missingKeyboardPermissionNames().isEmpty {
                     self.startKeyMonitor()
                 }
+
+                guard self.requiresFrequentPermissionPolling else { return }
+            }
+        }
+    }
+
+    var requiresFrequentPermissionPolling: Bool {
+        needsMicrophonePermission
+            || needsAccessibilityPermission
+            || (isEnabled && !keyMonitor.isRunning)
+    }
+
+    func applicationDidBecomeActive() {
+        refreshPermissionStatus()
+        refreshLocalSpeechModelStatus()
+
+        if isEnabled, !keyMonitor.isRunning, missingKeyboardPermissionNames().isEmpty {
+            startKeyMonitor()
+        }
+
+        startPermissionPolling()
+    }
+
+    func startInputDeviceMonitoring() {
+        inputDeviceMonitor.start { [weak self] in
+            Task { @MainActor in
+                self?.refreshInputDeviceState()
             }
         }
     }
@@ -184,7 +217,7 @@ extension HoldToTalkController {
     func missingKeyboardPermissionNames() -> [String] {
         var names: [String] = []
 
-        if !PermissionHelper.isAccessibilityTrusted {
+        if !hasAccessibilityPermission {
             names.append(L10n.tr("Accessibility"))
         }
 

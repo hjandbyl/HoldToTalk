@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TranscriptionOverlayView: View {
     @ObservedObject var controller: HoldToTalkController
+    @ObservedObject var liveTranscription: LiveTranscriptionState
     @ObservedObject var presentation: TranscriptionOverlayPresentation
     @Namespace private var glassNamespace
 
@@ -11,7 +12,7 @@ struct TranscriptionOverlayView: View {
     private let waveformWidth: CGFloat = 56
 
     private var transcriptText: String {
-        controller.liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        liveTranscription.text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var hasTranscript: Bool {
@@ -176,8 +177,7 @@ struct TranscriptionOverlayView: View {
 
     private var orbContentSurface: some View {
         RecordingWaveform(
-            spectrum: controller.inputSpectrum,
-            level: controller.inputLevel,
+            visualization: controller.inputVisualization,
             isRecording: controller.isRecording
         )
             .frame(width: compactWaveformWidth, height: 32)
@@ -193,8 +193,7 @@ struct TranscriptionOverlayView: View {
                 .frame(width: max(nucleusDiameter, bodyDiameter), height: max(nucleusDiameter, bodyDiameter))
 
             RecordingWaveform(
-                spectrum: controller.inputSpectrum,
-                level: controller.inputLevel,
+                visualization: controller.inputVisualization,
                 isRecording: controller.isRecording
             )
                 .frame(width: compactWaveformWidth, height: 32)
@@ -211,8 +210,7 @@ struct TranscriptionOverlayView: View {
     private var surfaceBody: some View {
         HStack(spacing: 14) {
             RecordingWaveform(
-                spectrum: controller.inputSpectrum,
-                level: controller.inputLevel,
+                visualization: controller.inputVisualization,
                 isRecording: controller.isRecording
             )
                 .frame(width: waveformWidth, height: 32)
@@ -247,8 +245,7 @@ final class TranscriptionOverlayPresentation: ObservableObject {
 }
 
 private struct RecordingWaveform: View {
-    let spectrum: [Double]
-    let level: Double
+    @ObservedObject var visualization: AudioInputVisualization
     let isRecording: Bool
 
     private let sourceBandCount = 9
@@ -262,7 +259,7 @@ private struct RecordingWaveform: View {
             return Array(repeating: 0, count: displayBarCount)
         }
 
-        let shaped = spectrum.map { min(1, max(0, $0)) }
+        let shaped = visualization.snapshot.spectrum.map { min(1, max(0, $0)) }
         guard !shaped.isEmpty else {
             return Array(repeating: 0, count: displayBarCount)
         }
@@ -280,18 +277,20 @@ private struct RecordingWaveform: View {
     }
 
     var body: some View {
+        let samples = displaySamples
+
         GeometryReader { proxy in
             let size = proxy.size
             let availableBarWidth = (size.width - CGFloat(displayBarCount - 1) * barSpacing) / CGFloat(displayBarCount)
             let barWidth = max(1.1, min(2.4, availableBarWidth))
 
             HStack(alignment: .center, spacing: barSpacing) {
-                ForEach(Array(displaySamples.enumerated()), id: \.offset) { index, sample in
+                ForEach(samples.indices, id: \.self) { index in
                     Capsule(style: .continuous)
-                        .fill(barFill(for: sample))
+                        .fill(barFill(for: samples[index]))
                         .frame(
                             width: barWidth,
-                            height: barHeight(for: sample, at: index, in: size)
+                            height: barHeight(for: samples[index], at: index, in: size)
                         )
                         .shadow(color: .black.opacity(isRecording ? 0.16 : 0.04), radius: 2.5, x: 0, y: 1.5)
                         .shadow(color: Color.recordingAccent.opacity(isRecording ? 0.18 : 0), radius: 5, x: 0, y: 0)
@@ -299,8 +298,8 @@ private struct RecordingWaveform: View {
             }
             .frame(width: size.width, height: size.height, alignment: .center)
         }
-        .animation(.easeOut(duration: 0.08), value: displaySamples)
-        .animation(.easeOut(duration: 0.08), value: level)
+        .animation(.easeOut(duration: 0.08), value: samples)
+        .animation(.easeOut(duration: 0.08), value: visualization.snapshot.level)
     }
 
     private func sample(_ values: [Double], at index: Int, outputCount: Int) -> Double {
@@ -315,7 +314,7 @@ private struct RecordingWaveform: View {
     }
 
     private func barHeight(for sample: Double, at index: Int, in size: CGSize) -> CGFloat {
-        let activity = CGFloat(min(1, max(0, level)))
+        let activity = CGFloat(min(1, max(0, visualization.snapshot.level)))
         let sourceIndex = min(sourceBandCount - 1, abs(index - centerBarIndex))
         let envelope = sourceIndex < barEnvelope.count ? barEnvelope[sourceIndex] : 0.72
         let shapedSample = pow(CGFloat(min(1, max(0, sample))), 0.38)

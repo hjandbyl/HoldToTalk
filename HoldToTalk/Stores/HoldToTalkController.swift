@@ -11,9 +11,6 @@ final class HoldToTalkController: ObservableObject {
     @Published var isTranscribing = false
     @Published var statusMessage = L10n.tr("Starting...")
     @Published var lastTranscript = ""
-    @Published var liveTranscript = ""
-    @Published var inputLevel = 0.0
-    @Published var inputSpectrum = Array(repeating: 0.0, count: AudioRecorder.spectrumBandCount)
     @Published var microphoneStatusText = L10n.tr("Unknown")
     @Published var inputDeviceText = L10n.tr("Unknown")
     @Published var availableInputDevices: [AudioInputDevice] = []
@@ -32,13 +29,17 @@ final class HoldToTalkController: ObservableObject {
     @Published var lastRecordingInfo = L10n.tr("No recording yet.")
     @Published var targetAppText = L10n.tr("No target app yet.")
     @Published var accessibilityStatusText = L10n.tr("Unknown")
+    @Published private(set) var hasMicrophonePermission = PermissionHelper.hasMicrophonePermission
+    @Published private(set) var hasAccessibilityPermission = PermissionHelper.isAccessibilityTrusted
     @Published var autoPaste = true
     @Published var recognitionEngine: RecognitionEngine = .volcengine
     @Published var preferredRecognitionEngine: RecognitionEngine = .volcengine
     @Published var selectedLocalSpeechModel: LocalSpeechModel
     @Published var localSpeechModelStatusText = L10n.tr("Not downloaded")
+    @Published private(set) var installedLocalSpeechModelIDs: Set<String> = []
     @Published var isDownloadingLocalSpeechModel = false
     @Published var downloadingLocalSpeechModelID: String?
+    @Published private(set) var deletingLocalSpeechModelIDs: Set<String> = []
     @Published var localSpeechModelDownloadProgress = 0.0
     @Published var volcengineLanguage: TranscriptionLanguage = .auto
     @Published var qwenASRLanguage: TranscriptionLanguage = .auto
@@ -56,6 +57,9 @@ final class HoldToTalkController: ObservableObject {
     }
 
     let recorder = AudioRecorder()
+    let inputVisualization = AudioInputVisualization()
+    let liveTranscription = LiveTranscriptionState()
+    let inputDeviceMonitor = AudioInputDeviceMonitor()
     let keyMonitor = GlobalFnKeyMonitor()
     let transcriber = SherpaOnnxClient()
     let cloudTranscriber = VolcengineStreamingClient()
@@ -86,6 +90,13 @@ final class HoldToTalkController: ObservableObject {
     var recordingStopTask: Task<Void, Never>?
     var hasShortcutEvent = false
     var hasRecordingInfo = false
+    var hasVolcengineAPIKey = false
+    var hasQwenASRAPIKey = false
+
+    var liveTranscript: String {
+        get { liveTranscription.text }
+        set { liveTranscription.update(newValue) }
+    }
 
     let shortcutDefaultsKey = "HoldToTalk.holdShortcut"
     let localSpeechModelDefaultsKey = "HoldToTalk.localSpeechModel"
@@ -148,23 +159,27 @@ final class HoldToTalkController: ObservableObject {
     }
 
     var isSelectedLocalSpeechModelInstalled: Bool {
-        LocalSpeechModelStore.isInstalled(selectedLocalSpeechModel)
+        isLocalSpeechModelInstalled(selectedLocalSpeechModel)
+    }
+
+    func isLocalSpeechModelInstalled(_ model: LocalSpeechModel) -> Bool {
+        installedLocalSpeechModelIDs.contains(model.id)
     }
 
     var needsMicrophonePermission: Bool {
-        !PermissionHelper.hasMicrophonePermission
+        !hasMicrophonePermission
     }
 
     var needsAccessibilityPermission: Bool {
-        !PermissionHelper.isAccessibilityTrusted
+        !hasAccessibilityPermission
     }
 
     var needsVolcengineAPIKey: Bool {
-        VolcengineCredentialStore.apiKey() == nil
+        !hasVolcengineAPIKey
     }
 
     var needsQwenASRAPIKey: Bool {
-        QwenASRCredentialStore.apiKey() == nil
+        !hasQwenASRAPIKey
     }
 
     var isUsingLocalFallbackForMissingAPIKey: Bool {
@@ -181,10 +196,14 @@ final class HoldToTalkController: ObservableObject {
         removesTrailingSentencePeriod = Self.loadRemovesTrailingSentencePeriod()
         keyMonitor.delegate = self
         keyMonitor.shortcut = savedShortcut
-        volcengineAPIKeyDraft = VolcengineCredentialStore.apiKey() ?? ""
-        qwenASRAPIKeyDraft = QwenASRCredentialStore.apiKey() ?? ""
-        refreshVolcengineAPIKeyState()
-        refreshQwenASRAPIKeyState()
+        let volcengineAPIKey = VolcengineCredentialStore.apiKey()
+        volcengineAPIKeyDraft = volcengineAPIKey ?? ""
+        hasVolcengineAPIKey = volcengineAPIKey != nil
+        volcengineAPIKeyStatusText = hasVolcengineAPIKey ? L10n.tr("Saved in Keychain") : L10n.tr("Not set")
+        let qwenASRAPIKey = QwenASRCredentialStore.apiKey()
+        qwenASRAPIKeyDraft = qwenASRAPIKey ?? ""
+        hasQwenASRAPIKey = qwenASRAPIKey != nil
+        qwenASRAPIKeyStatusText = hasQwenASRAPIKey ? L10n.tr("Saved in Keychain") : L10n.tr("Not set")
         refreshLocalSpeechModelStatus()
         refreshInputDeviceState()
         if needsVolcengineAPIKey {
@@ -204,6 +223,7 @@ final class HoldToTalkController: ObservableObject {
         }
 
         startPermissionPolling()
+        startInputDeviceMonitoring()
         startForegroundAppTracking()
         startKeyMonitor()
         ensureRecognitionEngineAvailable()
@@ -411,6 +431,7 @@ final class HoldToTalkController: ObservableObject {
 
     func downloadLocalSpeechModel(_ model: LocalSpeechModel) {
         guard !isDownloadingLocalSpeechModel else { return }
+        guard !deletingLocalSpeechModelIDs.contains(model.id) else { return }
 
         if selectedLocalSpeechModel != model {
             setLocalSpeechModel(model)
@@ -475,29 +496,58 @@ final class HoldToTalkController: ObservableObject {
     }
 
     func deleteLocalSpeechModel(_ model: LocalSpeechModel) {
+        guard !deletingLocalSpeechModelIDs.contains(model.id) else { return }
+        guard !isRecording, !isTranscribing else { return }
+
         if downloadingLocalSpeechModelID == model.id {
             cancelLocalSpeechModelDownload()
         }
 
-        do {
-            try LocalSpeechModelStore.delete(model)
-            if selectedLocalSpeechModel == model {
-                recognizerPrewarmTask?.cancel()
-                recognizerPrewarmTask = nil
-                Task { [transcriber] in
+        let shouldClearRecognizerCache = selectedLocalSpeechModel == model
+        if shouldClearRecognizerCache {
+            recognizerPrewarmTask?.cancel()
+            recognizerPrewarmTask = nil
+        }
+        deletingLocalSpeechModelIDs.insert(model.id)
+        statusMessage = L10n.tr("Deleting %@...", model.displayTitle)
+
+        Task { [weak self, transcriber] in
+            do {
+                try await Task.detached(priority: .utility) {
+                    try LocalSpeechModelStore.delete(model)
+                }.value
+
+                if shouldClearRecognizerCache {
                     await transcriber.clearCache()
                 }
+
+                guard let self else { return }
+                self.deletingLocalSpeechModelIDs.remove(model.id)
+                self.refreshLocalSpeechModelStatus()
+                self.statusMessage = L10n.tr("Deleted %@.", model.displayTitle)
+            } catch {
+                guard let self else { return }
+                self.deletingLocalSpeechModelIDs.remove(model.id)
+                self.localSpeechModelStatusText = error.localizedDescription
+                self.statusMessage = error.localizedDescription
             }
-            refreshLocalSpeechModelStatus()
-            statusMessage = L10n.tr("Deleted %@.", model.displayTitle)
-        } catch {
-            localSpeechModelStatusText = error.localizedDescription
-            statusMessage = error.localizedDescription
         }
     }
 
     func refreshLocalSpeechModelStatus() {
-        localSpeechModelStatusText = isSelectedLocalSpeechModelInstalled ? L10n.tr("Downloaded") : L10n.tr("Not downloaded")
+        let installedIDs = Set(
+            LocalSpeechModel.all
+                .filter(LocalSpeechModelStore.isInstalled)
+                .map(\.id)
+        )
+        if installedLocalSpeechModelIDs != installedIDs {
+            installedLocalSpeechModelIDs = installedIDs
+        }
+
+        setIfChanged(
+            \.localSpeechModelStatusText,
+            installedIDs.contains(selectedLocalSpeechModel.id) ? L10n.tr("Downloaded") : L10n.tr("Not downloaded")
+        )
     }
 
     func setLanguage(_ language: TranscriptionLanguage) {
@@ -570,7 +620,9 @@ final class HoldToTalkController: ObservableObject {
 
     func appLanguageDidChange() {
         refreshPermissionStatus()
+        refreshInputDeviceState()
         refreshVolcengineAPIKeyState()
+        refreshQwenASRAPIKeyState()
 
         if !hasShortcutEvent {
             shortcutEventText = L10n.tr("No shortcut event yet.")
@@ -588,9 +640,18 @@ final class HoldToTalkController: ObservableObject {
     }
 
     func refreshPermissionStatus() {
-        setIfChanged(\.microphoneStatusText, PermissionHelper.microphoneStatusText)
-        refreshInputDeviceState()
-        setIfChanged(\.accessibilityStatusText, PermissionHelper.isAccessibilityTrusted ? L10n.tr("Granted") : L10n.tr("Not granted"))
+        let microphoneAuthorization = AVCaptureDevice.authorizationStatus(for: .audio)
+        let hasMicrophonePermission = microphoneAuthorization == .authorized
+        if self.hasMicrophonePermission != hasMicrophonePermission {
+            self.hasMicrophonePermission = hasMicrophonePermission
+        }
+        setIfChanged(\.microphoneStatusText, PermissionHelper.microphoneStatusText(for: microphoneAuthorization))
+
+        let hasAccessibilityPermission = PermissionHelper.isAccessibilityTrusted
+        if self.hasAccessibilityPermission != hasAccessibilityPermission {
+            self.hasAccessibilityPermission = hasAccessibilityPermission
+        }
+        setIfChanged(\.accessibilityStatusText, hasAccessibilityPermission ? L10n.tr("Granted") : L10n.tr("Not granted"))
     }
 
 }

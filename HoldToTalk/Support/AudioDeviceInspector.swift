@@ -9,6 +9,60 @@ struct AudioInputDevice: Identifiable, Hashable {
     let isBluetooth: Bool
 }
 
+final class AudioInputDeviceMonitor {
+    typealias ChangeHandler = @Sendable () -> Void
+
+    private struct Registration {
+        var address: AudioObjectPropertyAddress
+        let listener: AudioObjectPropertyListenerBlock
+    }
+
+    private let callbackQueue = DispatchQueue(label: "HoldToTalk.AudioInputDeviceMonitor")
+    private var registrations: [Registration] = []
+
+    func start(changeHandler: @escaping ChangeHandler) {
+        guard registrations.isEmpty else { return }
+
+        let selectors: [AudioObjectPropertySelector] = [
+            kAudioHardwarePropertyDevices,
+            kAudioHardwarePropertyDefaultInputDevice
+        ]
+
+        for selector in selectors {
+            var address = AudioObjectPropertyAddress(
+                mSelector: selector,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            let listener: AudioObjectPropertyListenerBlock = { _, _ in
+                changeHandler()
+            }
+            let status = AudioObjectAddPropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject),
+                &address,
+                callbackQueue,
+                listener
+            )
+
+            if status == noErr {
+                registrations.append(Registration(address: address, listener: listener))
+            }
+        }
+    }
+
+    deinit {
+        for registration in registrations {
+            var address = registration.address
+            AudioObjectRemovePropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject),
+                &address,
+                callbackQueue,
+                registration.listener
+            )
+        }
+    }
+}
+
 enum AudioDeviceInspector {
     private static let coreAudioDefaultAggregatePrefix = "CADefaultDeviceAggregate"
 

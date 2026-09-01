@@ -176,7 +176,7 @@ extension HoldToTalkController {
                             shouldRemoveTrailingSentencePeriod: shouldRemoveTrailingSentencePeriod
                         )
                     )
-                    updateLastRecordingInfo(
+                    await updateLastRecordingInfo(
                         audioURL: audioURL,
                         trigger: trigger,
                         captureSummary: captureSummary,
@@ -191,14 +191,14 @@ extension HoldToTalkController {
                             shouldRemoveTrailingSentencePeriod: shouldRemoveTrailingSentencePeriod
                         )
                     )
-                    updateLastRecordingInfo(
+                    await updateLastRecordingInfo(
                         audioURL: audioURL,
                         trigger: trigger,
                         captureSummary: captureSummary,
                         inputDevice: inputDevice
                     )
                 case .sherpaOnnx:
-                    updateLastRecordingInfo(
+                    await updateLastRecordingInfo(
                         audioURL: audioURL,
                         trigger: trigger,
                         captureSummary: captureSummary,
@@ -432,31 +432,11 @@ extension HoldToTalkController {
             return
         }
 
-        let clampedLevel = min(1, max(0, analysis.level))
-        let attack = 0.65
-        let release = 0.24
-        let smoothing = clampedLevel > inputLevel ? attack : release
-        inputLevel = inputLevel * (1 - smoothing) + clampedLevel * smoothing
-
-        inputSpectrum = smoothedSpectrum(from: analysis.spectrum)
+        inputVisualization.update(with: analysis)
     }
 
     func resetInputAnalysis() {
-        inputLevel = 0
-        inputSpectrum = Array(repeating: 0, count: AudioRecorder.spectrumBandCount)
-    }
-
-    func smoothedSpectrum(from spectrum: [Double]) -> [Double] {
-        guard !spectrum.isEmpty else {
-            return Array(repeating: 0, count: AudioRecorder.spectrumBandCount)
-        }
-
-        return (0..<AudioRecorder.spectrumBandCount).map { index in
-            let incoming = min(1, max(0, index < spectrum.count ? spectrum[index] : 0))
-            let current = index < inputSpectrum.count ? inputSpectrum[index] : 0
-            let smoothing = incoming > current ? 0.72 : 0.30
-            return current * (1 - smoothing) + incoming * smoothing
-        }
+        inputVisualization.reset()
     }
 
     func flushBufferedCloudChunks() {
@@ -500,7 +480,10 @@ extension HoldToTalkController {
         }
 
         liveTranscript = text
-        statusMessage = isDefinite ? L10n.tr("Recording. Cloud finalizing segment...") : L10n.tr("Recording with cloud recognition...")
+        setIfChanged(
+            \.statusMessage,
+            isDefinite ? L10n.tr("Recording. Cloud finalizing segment...") : L10n.tr("Recording with cloud recognition...")
+        )
     }
 
 }

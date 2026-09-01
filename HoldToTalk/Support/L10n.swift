@@ -217,6 +217,7 @@ enum L10n {
         "Downloading %@...": "正在下载 %@...",
         "Downloading %@... %@": "正在下载 %@... %@",
         "Downloaded %@.": "%@ 已下载。",
+        "Deleting %@...": "正在删除 %@……",
         "Download canceled.": "下载已取消。",
         "Deleted %@.": "%@ 已删除。",
         "Listening for %@.": "正在监听 %@。",

@@ -63,25 +63,25 @@ extension HoldToTalkController {
         }
     }
 
-    func preserveLastRecording(_ url: URL) {
-        let debugURL = FileManager.default.temporaryDirectory.appendingPathComponent("HoldToTalk-last.wav")
-        try? FileManager.default.removeItem(at: debugURL)
-        try? FileManager.default.copyItem(at: url, to: debugURL)
-    }
-
     func updateLastRecordingInfo(
         audioURL: URL,
         trigger: String,
         captureSummary: String,
         inputDevice: String
-    ) {
-        preserveLastRecording(audioURL)
+    ) async {
+        let analysisResult = await Task.detached(priority: .utility) {
+            let debugURL = FileManager.default.temporaryDirectory.appendingPathComponent("HoldToTalk-last.wav")
+            try? FileManager.default.removeItem(at: debugURL)
+            try? FileManager.default.copyItem(at: audioURL, to: debugURL)
 
-        do {
-            let stats = try RecordedAudioAnalyzer.analyze(url: audioURL)
+            return Result { try RecordedAudioAnalyzer.analyze(url: audioURL) }
+        }.value
+
+        switch analysisResult {
+        case .success(let stats):
             hasRecordingInfo = true
             lastRecordingInfo = L10n.tr("%@, %@, %@, input %@", stats.summary, localizedTriggerName(trigger), captureSummary, inputDevice)
-        } catch {
+        case .failure(let error):
             hasRecordingInfo = true
             lastRecordingInfo = L10n.tr("%@, %@, input %@, audio analysis failed: %@", localizedTriggerName(trigger), captureSummary, inputDevice, error.localizedDescription)
         }
@@ -186,7 +186,9 @@ extension HoldToTalkController {
 
     func refreshInputDeviceState() {
         let inputDevices = AudioDeviceInspector.inputDevices()
-        availableInputDevices = inputDevices
+        if availableInputDevices != inputDevices {
+            availableInputDevices = inputDevices
+        }
 
         guard !selectedInputDeviceUID.isEmpty else {
             setIfChanged(\.inputDeviceText, AudioDeviceInspector.inputDeviceDisplayName(selectedUID: ""))

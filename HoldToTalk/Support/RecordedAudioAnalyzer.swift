@@ -1,4 +1,5 @@
 import AVFoundation
+import Accelerate
 import Foundation
 
 struct RecordedAudioStats {
@@ -16,6 +17,8 @@ struct RecordedAudioStats {
 }
 
 enum RecordedAudioAnalyzer {
+    private static let analysisBufferFrameCount: AVAudioFrameCount = 16_384
+
     static func analyze(url: URL) throws -> RecordedAudioStats {
         let file = try AVAudioFile(forReading: url)
         let duration = file.fileFormat.sampleRate > 0
@@ -35,30 +38,39 @@ enum RecordedAudioAnalyzer {
             return RecordedAudioStats(duration: duration, rms: 0, peak: 0, fileSize: fileSize(url: url))
         }
 
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(file.length)) else {
+        let bufferCapacity = AVAudioFrameCount(
+            min(file.length, AVAudioFramePosition(analysisBufferFrameCount))
+        )
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: bufferCapacity
+        ) else {
             return RecordedAudioStats(duration: duration, rms: 0, peak: 0, fileSize: fileSize(url: url))
         }
 
-        try file.read(into: buffer)
-
-        guard let channelData = buffer.floatChannelData else {
-            return RecordedAudioStats(duration: duration, rms: 0, peak: 0, fileSize: fileSize(url: url))
-        }
-
-        let frameLength = Int(buffer.frameLength)
-        let channelCount = Int(buffer.format.channelCount)
         var peak: Float = 0
         var sumSquares: Double = 0
         var sampleCount = 0
 
-        for channel in 0..<channelCount {
-            let samples = channelData[channel]
+        while file.framePosition < file.length {
+            let framesToRead = AVAudioFrameCount(
+                min(file.length - file.framePosition, AVAudioFramePosition(buffer.frameCapacity))
+            )
+            try file.read(into: buffer, frameCount: framesToRead)
+            guard buffer.frameLength > 0, let channelData = buffer.floatChannelData else { break }
 
-            for frame in 0..<frameLength {
-                let sample = samples[frame]
-                peak = max(peak, abs(sample))
-                sumSquares += Double(sample * sample)
-                sampleCount += 1
+            let frameLength = Int(buffer.frameLength)
+            let channelCount = Int(buffer.format.channelCount)
+            for channel in 0..<channelCount {
+                let samples = channelData[channel]
+                var channelPeak: Float = 0
+                var channelSumSquares: Float = 0
+                vDSP_maxmgv(samples, 1, &channelPeak, vDSP_Length(frameLength))
+                vDSP_svesq(samples, 1, &channelSumSquares, vDSP_Length(frameLength))
+
+                peak = max(peak, channelPeak)
+                sumSquares += Double(channelSumSquares)
+                sampleCount += frameLength
             }
         }
 
