@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-09-01
+
 ### Changed
 
 - Redesigned the status bar panel as a window-style menu with icons and a compact layout, so it stays open after selecting a microphone and additional controls remain immediately available.
