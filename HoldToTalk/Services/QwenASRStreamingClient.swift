@@ -14,6 +14,8 @@ actor QwenASRStreamingClient {
     private var latestText = ""
     private var latestDefiniteText = ""
     private var didReceiveSessionFinished = false
+    private var sessionFinishedWaiter: CheckedContinuation<Void, Never>?
+    private var sessionFinishedTimeoutTask: Task<Void, Never>?
     private var updateHandler: (@Sendable (RecognitionUpdate) -> Void)?
     private var session: URLSession?
     private var delegate: QwenWebSocketOpenDelegate?
@@ -122,9 +124,7 @@ actor QwenASRStreamingClient {
 
         try await webSocketTask.send(.string(Self.finishMessage()))
 
-        for _ in 0..<50 where !didReceiveSessionFinished {
-            try? await Task.sleep(for: .milliseconds(100))
-        }
+        await waitForSessionFinished(timeout: .seconds(5))
         webSocketTask.cancel(with: .normalClosure, reason: nil)
         receiveTask?.cancel()
 
@@ -188,6 +188,7 @@ actor QwenASRStreamingClient {
 
         case "session.finished":
             didReceiveSessionFinished = true
+            resumeSessionFinishedWaiter()
 
         case "error":
             let message = json["message"] as? String
@@ -201,6 +202,7 @@ actor QwenASRStreamingClient {
     }
 
     private func reset() {
+        resumeSessionFinishedWaiter()
         webSocketTask = nil
         receiveTask = nil
         latestText = ""
@@ -212,6 +214,41 @@ actor QwenASRStreamingClient {
         session?.invalidateAndCancel()
         session = nil
         delegate = nil
+    }
+
+    private func waitForSessionFinished(timeout: Duration) async {
+        guard !didReceiveSessionFinished else { return }
+
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !didReceiveSessionFinished, !Task.isCancelled else {
+                    continuation.resume()
+                    return
+                }
+
+                sessionFinishedWaiter = continuation
+                sessionFinishedTimeoutTask = Task { [weak self] in
+                    do {
+                        try await Task.sleep(for: timeout)
+                    } catch {
+                        return
+                    }
+                    await self?.resumeSessionFinishedWaiter()
+                }
+            }
+        } onCancel: {
+            Task { [weak self] in
+                await self?.resumeSessionFinishedWaiter()
+            }
+        }
+    }
+
+    private func resumeSessionFinishedWaiter() {
+        let waiter = sessionFinishedWaiter
+        sessionFinishedWaiter = nil
+        sessionFinishedTimeoutTask?.cancel()
+        sessionFinishedTimeoutTask = nil
+        waiter?.resume()
     }
 
     private static func apiKey() -> String? {

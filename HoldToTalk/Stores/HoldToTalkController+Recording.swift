@@ -94,9 +94,17 @@ extension HoldToTalkController {
         guard recordingStopTask == nil else { return }
 
         let heldDuration = recordingStartedAt.map { Date().timeIntervalSince($0) } ?? .infinity
+        let recordingTailPadding = AudioDeviceInspector.isBluetoothInputDevice(uid: activeInputDeviceUID)
+            ? bluetoothRecordingTailPadding
+            : standardRecordingTailPadding
+        guard recordingTailPadding > 0 else {
+            finishRecordingAndTranscribe(heldDuration: heldDuration)
+            return
+        }
+
         recordingStopTask = Task { [weak self] in
             guard let self else { return }
-            try? await Task.sleep(for: .seconds(self.recordingTailPadding))
+            try? await Task.sleep(for: .seconds(recordingTailPadding))
             guard !Task.isCancelled else { return }
 
             self.recordingStopTask = nil
@@ -153,7 +161,17 @@ extension HoldToTalkController {
                     injector.insert(insertion.text, targetApplication: insertion.targetApplication)
                 }
 
-                try? FileManager.default.removeItem(at: audioURL)
+                Task { [weak self] in
+                    if let self {
+                        await self.updateLastRecordingInfo(
+                            audioURL: audioURL,
+                            trigger: trigger,
+                            captureSummary: captureSummary,
+                            inputDevice: inputDevice
+                        )
+                    }
+                    try? FileManager.default.removeItem(at: audioURL)
+                }
 
                 if selectedEngine.isCloud, activeRecognitionSessionID == recognitionSessionID {
                     cloudStartTask = nil
@@ -176,12 +194,6 @@ extension HoldToTalkController {
                             shouldRemoveTrailingSentencePeriod: shouldRemoveTrailingSentencePeriod
                         )
                     )
-                    await updateLastRecordingInfo(
-                        audioURL: audioURL,
-                        trigger: trigger,
-                        captureSummary: captureSummary,
-                        inputDevice: inputDevice
-                    )
                 case .qwenASR:
                     try await cloudStartTask?.value
                     _ = await cloudSendTask?.value
@@ -191,19 +203,7 @@ extension HoldToTalkController {
                             shouldRemoveTrailingSentencePeriod: shouldRemoveTrailingSentencePeriod
                         )
                     )
-                    await updateLastRecordingInfo(
-                        audioURL: audioURL,
-                        trigger: trigger,
-                        captureSummary: captureSummary,
-                        inputDevice: inputDevice
-                    )
                 case .sherpaOnnx:
-                    await updateLastRecordingInfo(
-                        audioURL: audioURL,
-                        trigger: trigger,
-                        captureSummary: captureSummary,
-                        inputDevice: inputDevice
-                    )
                     text = TextInjector.normalizedInsertionText(
                         from: finalizedTranscriptText(
                             from: try await transcriber.transcribe(

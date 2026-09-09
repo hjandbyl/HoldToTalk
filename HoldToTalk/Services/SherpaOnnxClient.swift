@@ -7,8 +7,8 @@ import Foundation
 actor SherpaOnnxClient {
     private var recognizers: [String: OfflineLocalSpeechRecognizer] = [:]
 
-    func preload(model: LocalSpeechModel) async throws {
-        _ = try recognizer(language: "auto", model: model)
+    func preload(model: LocalSpeechModel, language: String) async throws {
+        _ = try recognizer(language: language, model: model)
     }
 
     func transcribe(audioURL: URL, language: String, model: LocalSpeechModel) async throws -> String {

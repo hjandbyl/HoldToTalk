@@ -103,7 +103,8 @@ final class HoldToTalkController: ObservableObject {
     static let inputDeviceDefaultsKey = "HoldToTalk.inputDeviceUID"
     static let inputDeviceNameDefaultsKey = "HoldToTalk.inputDeviceName"
     let minimumFnHoldDurationForRecognition: TimeInterval = 0.22
-    let recordingTailPadding: TimeInterval = 0.35
+    let standardRecordingTailPadding: TimeInterval = 0
+    let bluetoothRecordingTailPadding: TimeInterval = 0.35
     static let manualRecordingTrigger = "Manual"
     static let removesTrailingSentencePeriodDefaultsKey = "HoldToTalk.removesTrailingSentencePeriod"
     static let percentFormatter: NumberFormatter = {
@@ -574,7 +575,16 @@ final class HoldToTalkController: ObservableObject {
             }
         case .sherpaOnnx:
             guard selectedLocalSpeechModel.supportedLanguages.contains(language) else { return }
+            guard sherpaOnnxLanguage != language else { return }
             sherpaOnnxLanguage = language
+            recognizerPrewarmTask?.cancel()
+            recognizerPrewarmTask = nil
+            if recognitionEngine == .sherpaOnnx,
+               isSelectedLocalSpeechModelInstalled,
+               !isRecording,
+               !isTranscribing {
+                prewarmRecognizer()
+            }
         }
     }
 

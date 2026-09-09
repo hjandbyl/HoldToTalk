@@ -14,6 +14,8 @@ actor VolcengineStreamingClient {
     private var latestText = ""
     private var latestDefiniteText = ""
     private var didReceiveFinalResponse = false
+    private var finalResponseWaiter: CheckedContinuation<Void, Never>?
+    private var finalResponseTimeoutTask: Task<Void, Never>?
     private var updateHandler: (@Sendable (RecognitionUpdate) -> Void)?
     private var session: URLSession?
     private var delegate: WebSocketOpenDelegate?
@@ -114,9 +116,7 @@ actor VolcengineStreamingClient {
         let payload = finalAudio ?? Data()
         try await webSocketTask.send(.data(Self.audioRequest(payload: payload, isFinal: true)))
 
-        for _ in 0..<20 where !didReceiveFinalResponse {
-            try? await Task.sleep(for: .milliseconds(100))
-        }
+        await waitForFinalResponse(timeout: .seconds(2))
         webSocketTask.cancel(with: .normalClosure, reason: nil)
         receiveTask?.cancel()
 
@@ -149,6 +149,10 @@ actor VolcengineStreamingClient {
                             }
                             updateHandler?(update)
                         }
+
+                        if didReceiveFinalResponse {
+                            resumeFinalResponseWaiter()
+                        }
                     }
                 case .string:
                     continue
@@ -165,6 +169,7 @@ actor VolcengineStreamingClient {
     }
 
     private func reset() {
+        resumeFinalResponseWaiter()
         webSocketTask = nil
         receiveTask = nil
         latestText = ""
@@ -176,6 +181,41 @@ actor VolcengineStreamingClient {
         session?.invalidateAndCancel()
         session = nil
         delegate = nil
+    }
+
+    private func waitForFinalResponse(timeout: Duration) async {
+        guard !didReceiveFinalResponse else { return }
+
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !didReceiveFinalResponse, !Task.isCancelled else {
+                    continuation.resume()
+                    return
+                }
+
+                finalResponseWaiter = continuation
+                finalResponseTimeoutTask = Task { [weak self] in
+                    do {
+                        try await Task.sleep(for: timeout)
+                    } catch {
+                        return
+                    }
+                    await self?.resumeFinalResponseWaiter()
+                }
+            }
+        } onCancel: {
+            Task { [weak self] in
+                await self?.resumeFinalResponseWaiter()
+            }
+        }
+    }
+
+    private func resumeFinalResponseWaiter() {
+        let waiter = finalResponseWaiter
+        finalResponseWaiter = nil
+        finalResponseTimeoutTask?.cancel()
+        finalResponseTimeoutTask = nil
+        waiter?.resume()
     }
 
     private static func apiKey() -> String? {

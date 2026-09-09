@@ -11,14 +11,22 @@ final class TextInjector {
         guard !trimmedText.isEmpty else { return }
 
         if let targetApplication, !targetApplication.isTerminated {
+            let requiresActivation = !targetApplication.isActive
             if #available(macOS 14.0, *) {
                 targetApplication.activate(options: [.activateAllWindows])
             } else {
                 targetApplication.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
             }
+
+            if requiresActivation {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    self?.paste(trimmedText)
+                }
+                return
+            }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + pasteDelay(for: targetApplication)) { [weak self] in
+        DispatchQueue.main.async { [weak self] in
             self?.paste(trimmedText)
         }
     }
@@ -41,10 +49,6 @@ final class TextInjector {
                 pasteboard.setString(previousString, forType: .string)
             }
         }
-    }
-
-    private func pasteDelay(for targetApplication: NSRunningApplication?) -> TimeInterval {
-        targetApplication == nil ? 0 : 0.2
     }
 
     private func postPasteShortcut() {

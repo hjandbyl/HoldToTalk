@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+### Changed
+
+- Reduced the delay between releasing the shortcut and automatic text insertion by ending non-Bluetooth recordings immediately, streaming cloud audio in 100 ms chunks, prewarming the selected local-recognition language, removing recording diagnostics from the critical path, reacting to cloud completion events immediately, and skipping app-activation wait time when the insertion target is already active. Bluetooth microphones retain their longer tail window to avoid clipping buffered speech.
+
 ## [0.1.8] - 2026-09-01
 
 ### Changed

@@ -31,7 +31,8 @@ final class AudioRecorder: @unchecked Sendable {
     private var analysisFramesSinceLastEmission = 0.0
     private var hasEmittedInputAnalysis = false
 
-    private static let streamingChunkByteCount = 6_400
+    // 100 ms of 16 kHz, 16-bit mono PCM keeps cloud recognition close to live input.
+    private static let streamingChunkByteCount = 3_200
     private static let inputAnalysisUpdatesPerSecond = 20.0
     static let spectrumBandCount = 25
 

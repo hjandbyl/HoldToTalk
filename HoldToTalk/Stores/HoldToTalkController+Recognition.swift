@@ -197,11 +197,14 @@ extension HoldToTalkController {
             statusMessage = L10n.tr("Preparing sherpa-onnx...")
         }
 
-        recognizerPrewarmTask = Task { [weak self] in
+        let selectedModel = selectedLocalSpeechModel
+        let selectedLanguage = language(for: .sherpaOnnx)
+            .localSpeechModelLanguageCode(for: selectedModel)
+        recognizerPrewarmTask = Task { [weak self, transcriber] in
             guard let self else { return }
 
             do {
-                try await self.transcriber.preload(model: self.selectedLocalSpeechModel)
+                try await transcriber.preload(model: selectedModel, language: selectedLanguage)
 
                 if self.isEnabled, !self.isRecording, !self.isTranscribing, self.missingKeyboardPermissionNames().isEmpty {
                     self.statusMessage = L10n.tr("Listening for %@. sherpa-onnx ready.", self.holdShortcut.displayName)
