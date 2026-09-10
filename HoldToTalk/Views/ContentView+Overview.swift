@@ -79,39 +79,60 @@ extension ContentView {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: L10n.tr("Setup"), systemImage: "checklist")
 
-            LazyVGrid(columns: overviewSetupColumns, spacing: 12) {
-                setupStepCard(
-                    title: L10n.tr("Permissions"),
-                    value: permissionsSummary,
-                    systemImage: "lock.shield.fill",
-                    tint: (controller.needsMicrophonePermission || controller.needsAccessibilityPermission) ? .orange : .green,
-                    actionTitle: L10n.tr("Review"),
-                    destination: .permissions
-                )
-
-                setupStepCard(
-                    title: L10n.tr("Recognition"),
-                    value: recognitionSummary,
-                    systemImage: "waveform",
-                    tint: .blue,
-                    actionTitle: L10n.tr("Configure"),
-                    destination: .recognition
-                )
-
-                setupStepCard(
-                    title: L10n.tr("Shortcut"),
-                    value: controller.holdShortcut.displayName,
-                    systemImage: "keyboard.fill",
-                    tint: .purple,
-                    actionTitle: L10n.tr("Change"),
-                    destination: .shortcut
-                )
+            if #available(macOS 26.0, *) {
+                GlassEffectContainer(spacing: 12) {
+                    overviewSetupCards
+                }
+            } else {
+                overviewSetupCards
             }
         }
     }
 
+    private var overviewSetupCards: some View {
+        HStack(alignment: .top, spacing: 12) {
+            setupStepCard(
+                title: L10n.tr("Permissions"),
+                value: permissionsSummary,
+                systemImage: "lock.shield.fill",
+                tint: (controller.needsMicrophonePermission || controller.needsAccessibilityPermission) ? .orange : .green,
+                actionTitle: L10n.tr("Review"),
+                destination: .permissions
+            )
+
+            setupStepCard(
+                title: L10n.tr("Recognition"),
+                value: recognitionSummary,
+                systemImage: "waveform",
+                tint: .blue,
+                actionTitle: L10n.tr("Configure"),
+                destination: .recognition
+            )
+
+            setupStepCard(
+                title: L10n.tr("Shortcut"),
+                value: controller.holdShortcut.displayName,
+                systemImage: "keyboard.fill",
+                tint: .purple,
+                actionTitle: L10n.tr("Change"),
+                destination: .shortcut
+            )
+        }
+    }
+
+    @ViewBuilder
     var overviewActivityGrid: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14)], spacing: 14) {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: 14) {
+                overviewActivityCards
+            }
+        } else {
+            overviewActivityCards
+        }
+    }
+
+    private var overviewActivityCards: some View {
+        HStack(alignment: .top, spacing: 14) {
             overviewTranscriptCard
             overviewHealthCard
         }

@@ -179,7 +179,7 @@ extension ContentView {
                 statusRow(title: L10n.tr("Version"), value: AppVersion.displayText)
             }
             .padding(16)
-            .materialSurface()
+            .liquidGlassSurface()
         }
     }
 
@@ -192,7 +192,7 @@ extension ContentView {
                 .padding(12)
         }
         .frame(minHeight: minHeight)
-        .materialSurface()
+        .liquidGlassSurface()
     }
 
     var permissionWarning: some View {

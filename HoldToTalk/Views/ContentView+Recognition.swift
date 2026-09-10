@@ -131,7 +131,7 @@ extension ContentView {
         .buttonStyle(.plain)
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .materialSurface(tint: isSelected ? .blue : nil)
+        .liquidGlassSurface(tint: isSelected ? .blue : nil, interactive: true)
     }
 
     @ViewBuilder
@@ -292,7 +292,7 @@ extension ContentView {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .materialSurface(tint: .blue)
+        .liquidGlassSurface(tint: .blue, interactive: true)
     }
 
     func qwenASRAPIKeyNotice(showActions: Bool) -> some View {
@@ -333,7 +333,7 @@ extension ContentView {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .materialSurface(tint: .blue)
+        .liquidGlassSurface(tint: .blue, interactive: true)
     }
 
     func localSpeechModelDownloadNotice(showActions: Bool) -> some View {
@@ -368,7 +368,7 @@ extension ContentView {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .materialSurface(tint: .blue)
+        .liquidGlassSurface(tint: .blue, interactive: true)
     }
 
 }

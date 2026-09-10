@@ -53,14 +53,6 @@ extension ContentView {
         controller.preferredRecognitionEngine == .sherpaOnnx && !controller.isSelectedLocalSpeechModelInstalled
     }
 
-    var overviewSetupColumns: [GridItem] {
-        [
-            GridItem(.flexible(minimum: 176), spacing: 12),
-            GridItem(.flexible(minimum: 176), spacing: 12),
-            GridItem(.flexible(minimum: 176), spacing: 12)
-        ]
-    }
-
     var languageSelection: Binding<TranscriptionLanguage> {
         Binding {
             controller.language
@@ -192,7 +184,7 @@ extension ContentView {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .materialSurface(tint: tint)
+        .liquidGlassSurface(tint: tint, interactive: true)
     }
 
     func compactStatusRow(title: String, value: String, systemImage: String) -> some View {
@@ -214,14 +206,4 @@ extension ContentView {
         .font(.callout)
     }
 
-    @ViewBuilder
-    func glassContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        if #available(macOS 26.0, *) {
-            GlassEffectContainer(spacing: 14) {
-                content()
-            }
-        } else {
-            content()
-        }
-    }
 }

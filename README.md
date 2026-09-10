@@ -19,6 +19,7 @@ Build and run the macOS app:
 ```
 
 The build script automatically downloads the sherpa-onnx macOS runtime into `ThirdParty/` if it is missing.
+It builds the native Xcode target so the packaged app retains the active SDK metadata required for the current macOS appearance.
 
 Create an ad-hoc signed release app bundle:
 
@@ -69,7 +70,7 @@ If `HOLDTOTALK_SIGN_IDENTITY` is not set, the build script will try to use the f
 
 - macOS 14 or later
 - Apple silicon Mac for the current arm64 runtime and release build
-- Xcode command line tools when building from source
+- Xcode 27 command line tools when building from source
 
 ## License
 

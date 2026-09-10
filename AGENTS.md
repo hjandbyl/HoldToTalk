@@ -33,7 +33,7 @@ Useful variants:
 ./script/build_and_run.sh --telemetry
 ```
 
-The script downloads the sherpa-onnx runtime into `ThirdParty/` if needed, builds with SwiftPM, packages `dist/HoldToTalk.app` or `dist-adhoc/HoldToTalk.app`, compiles `HoldToTalk/Assets.xcassets` with `actool`, copies required dylibs, writes `Info.plist`, and signs the app.
+The script downloads the sherpa-onnx runtime into `ThirdParty/` if needed, builds the native Xcode target into a repository-local Derived Data directory, packages `dist/HoldToTalk.app` or `dist-adhoc/HoldToTalk.app`, embeds assets and required dylibs through the Xcode target, and signs the app. Building through the native target preserves the active SDK metadata used by macOS to select the current system appearance.
 
 If local signing fails, use:
 

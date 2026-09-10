@@ -82,14 +82,28 @@ struct ProminentGlassButton: View {
 extension View {
     @ViewBuilder
     func liquidGlassSurface(tint: Color? = nil, interactive: Bool = false) -> some View {
-        self.materialSurface(tint: tint)
+        if #available(macOS 26.0, *) {
+            if let tint {
+                self.glassEffect(
+                    .regular.tint(tint.opacity(0.16)).interactive(interactive),
+                    in: .rect(cornerRadius: 16)
+                )
+            } else {
+                self.glassEffect(
+                    .regular.interactive(interactive),
+                    in: .rect(cornerRadius: 16)
+                )
+            }
+        } else {
+            self.materialSurface(tint: tint)
+        }
     }
 
     func materialSurface(tint: Color? = nil) -> some View {
         self
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke((tint ?? Color(nsColor: .separatorColor)).opacity(0.35), lineWidth: 0.5)
                     .allowsHitTesting(false)
             }

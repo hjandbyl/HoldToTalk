@@ -19,7 +19,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: .constant(.all)) {
             sidebar
         } detail: {
             detailView
@@ -35,28 +35,32 @@ struct ContentView: View {
     }
 
     private var sidebar: some View {
-        List {
+        List(selection: $selectedSection) {
             Section("HoldToTalk") {
                 ForEach(MainSection.allCases) { section in
-                    Button {
-                        selectedSection = section
-                    } label: {
-                        Label(section.title, systemImage: section.systemImage)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(section.title)
-                    .listRowBackground(
-                        (selectedSection ?? .overview) == section
-                            ? Color.accentColor.opacity(0.14)
-                            : Color.clear
-                    )
+                    Label(section.title, systemImage: section.systemImage)
+                        .tag(section)
+                        .accessibilityLabel(section.title)
                 }
             }
         }
         .listStyle(.sidebar)
+        .toolbar(removing: .sidebarToggle)
+        .toolbar {
+            // Keep the native window toolbar active so current macOS releases
+            // retain their floating sidebar chrome after removing its toggle.
+            ToolbarItem(placement: .navigation) {
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityHidden(true)
+                    .allowsHitTesting(false)
+            }
+        }
         .navigationTitle("HoldToTalk")
+        .background {
+            NativeSidebarCollapseLock()
+                .frame(width: 0, height: 0)
+        }
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
@@ -82,31 +86,28 @@ struct ContentView: View {
 
     private var detailView: some View {
         ScrollView {
-            glassContainer {
-                VStack(alignment: .leading, spacing: 18) {
-                    switch selectedSection ?? .overview {
-                    case .overview:
-                        overviewSection
-                    case .recognition:
-                        recognitionSection
-                    case .shortcut:
-                        shortcutSection
-                    case .permissions:
-                        permissionsSection
-                    case .transcript:
-                        transcriptSection
-                    case .diagnostics:
-                        diagnosticsSection
-                    case .settings:
-                        settingsSection
-                    }
+            VStack(alignment: .leading, spacing: 18) {
+                switch selectedSection ?? .overview {
+                case .overview:
+                    overviewSection
+                case .recognition:
+                    recognitionSection
+                case .shortcut:
+                    shortcutSection
+                case .permissions:
+                    permissionsSection
+                case .transcript:
+                    transcriptSection
+                case .diagnostics:
+                    diagnosticsSection
+                case .settings:
+                    settingsSection
                 }
-                .frame(maxWidth: 980, alignment: .topLeading)
-                .padding(24)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
+            .frame(maxWidth: 980, alignment: .topLeading)
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .navigationTitle((selectedSection ?? .overview).title)
     }
-
 }

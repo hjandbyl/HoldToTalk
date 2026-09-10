@@ -6,6 +6,22 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-10
+
+### Changed
+
+- Updated the native project metadata and source build requirements for Xcode 27.
+- Adopted native Liquid Glass surfaces and the system-provided floating sidebar on current macOS releases while retaining material fallbacks for macOS 14 through 25.
+- Switched app packaging to the native Xcode target so packaged binaries retain Xcode 27 SDK metadata instead of being marked as linked against macOS 14 by SwiftPM.
+
+### Fixed
+
+- Made nested task capture ownership explicit so Xcode 27's Swift 6.4 compiler builds the app without implicit strong-capture warnings.
+- Returned sidebar presentation, visibility, and sizing to `NavigationSplitView`'s automatic system policy instead of imposing competing width and presentation constraints.
+- Removed full-window background-extension sampling, width-sensitive lazy grids, and redundant app-level visibility invalidation from the sidebar transition path, then grouped adjacent glass surfaces for efficient native compositing.
+- Restored the sidebar's native navigation title and removed the custom detail gradient that was tinting the translucent system sidebar.
+- Kept the native sidebar permanently visible, removed its system toggle, and disabled collapse on its underlying native split-view item to avoid the affected transition entirely.
+
 ## [0.1.9] - 2026-09-09
 
 ### Changed

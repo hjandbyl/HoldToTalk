@@ -150,7 +150,7 @@ extension HoldToTalkController {
         let selectedLanguage = language(for: selectedEngine)
         let selectedLocalModel = selectedLocalSpeechModel
         let shouldRemoveTrailingSentencePeriod = removesTrailingSentencePeriod
-        Task {
+        Task { [self] in
             var finalStatus = L10n.tr("Transcription finished.")
             var insertion: (text: String, targetApplication: NSRunningApplication?)?
 
@@ -310,7 +310,7 @@ extension HoldToTalkController {
         let selectedEngine = recognitionEngine
         let selectedLanguage = language(for: selectedEngine)
 
-        cloudStartTask = Task { [cloudTranscriber, qwenASRTranscriber] in
+        cloudStartTask = Task { [self, cloudTranscriber, qwenASRTranscriber] in
             if let preconnectTask {
                 try? await preconnectTask.value
             }
