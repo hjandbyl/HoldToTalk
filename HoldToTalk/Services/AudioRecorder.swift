@@ -13,6 +13,10 @@ final class AudioRecorder: @unchecked Sendable {
     typealias InputAnalysisHandler = @Sendable (AudioInputAnalysis) -> Void
 
     private let stateQueue = DispatchQueue(label: "HoldToTalk.AudioRecorder.state")
+    private let analysisQueue = DispatchQueue(
+        label: "HoldToTalk.AudioRecorder.analysis",
+        qos: .userInitiated
+    )
     private let spectrumAnalyzer = AudioSpectrumAnalyzer()
     private var engine: AVAudioEngine?
     private var audioFile: AVAudioFile?
@@ -30,11 +34,13 @@ final class AudioRecorder: @unchecked Sendable {
     private var pendingStreamingAudio = Data()
     private var analysisFramesSinceLastEmission = 0.0
     private var hasEmittedInputAnalysis = false
+    private var isInputAnalysisPending = false
+    private var inputAnalysisGeneration: UInt64 = 0
 
     // 100 ms of 16 kHz, 16-bit mono PCM keeps cloud recognition close to live input.
     private static let streamingChunkByteCount = 3_200
-    private static let inputAnalysisUpdatesPerSecond = 20.0
-    static let spectrumBandCount = 25
+    private static let inputAnalysisUpdatesPerSecond = 24.0
+    static let spectrumBandCount = 18
 
     func captureSummary(heldDuration: TimeInterval) -> String {
         stateQueue.sync {
@@ -75,6 +81,8 @@ final class AudioRecorder: @unchecked Sendable {
             pendingStreamingAudio.removeAll(keepingCapacity: true)
             analysisFramesSinceLastEmission = 0
             hasEmittedInputAnalysis = false
+            isInputAnalysisPending = false
+            inputAnalysisGeneration &+= 1
         }
 
         do {
@@ -164,6 +172,8 @@ final class AudioRecorder: @unchecked Sendable {
             streamingConverter = nil
             streamingOutputFormat = nil
             streamingOutputBuffer = nil
+            isInputAnalysisPending = false
+            inputAnalysisGeneration &+= 1
             let runningEngine = engine
             self.engine = nil
             return (url, runningEngine)
@@ -184,7 +194,7 @@ final class AudioRecorder: @unchecked Sendable {
     private func write(_ buffer: AVAudioPCMBuffer) {
         guard buffer.frameLength > 0 else { return }
 
-        var analysisHandler: InputAnalysisHandler?
+        var analysisRequest: (handler: InputAnalysisHandler, generation: UInt64)?
 
         stateQueue.sync {
             guard let recordingURL else { return }
@@ -212,10 +222,12 @@ final class AudioRecorder: @unchecked Sendable {
                         buffer.format.sampleRate / Self.inputAnalysisUpdatesPerSecond
                     )
 
-                    if !hasEmittedInputAnalysis || analysisFramesSinceLastEmission >= analysisFrameInterval {
+                    if (!hasEmittedInputAnalysis || analysisFramesSinceLastEmission >= analysisFrameInterval),
+                       !isInputAnalysisPending {
                         hasEmittedInputAnalysis = true
                         analysisFramesSinceLastEmission.formTruncatingRemainder(dividingBy: analysisFrameInterval)
-                        analysisHandler = inputAnalysisHandler
+                        isInputAnalysisPending = true
+                        analysisRequest = (inputAnalysisHandler, inputAnalysisGeneration)
                     }
                 }
             } catch {
@@ -223,55 +235,64 @@ final class AudioRecorder: @unchecked Sendable {
             }
         }
 
-        guard let analysisHandler else { return }
-        analysisHandler(
-            AudioInputAnalysis(
-                level: Self.audioLevel(from: buffer),
-                spectrum: spectrumAnalyzer.spectrum(from: buffer)
-            )
-        )
-    }
-
-    private static func audioLevel(from buffer: AVAudioPCMBuffer) -> Double {
-        let frameCount = Int(buffer.frameLength)
-        let channelCount = Int(buffer.format.channelCount)
-        guard frameCount > 0, channelCount > 0 else { return 0 }
-
-        var sumSquares = 0.0
-        var sampleCount = 0
-
-        if let channels = buffer.floatChannelData {
-            for channel in 0..<channelCount {
-                let samples = channels[channel]
-                var channelSumSquares: Float = 0
-                vDSP_svesq(samples, 1, &channelSumSquares, vDSP_Length(frameCount))
-                sumSquares += Double(channelSumSquares)
-                sampleCount += frameCount
-            }
-        } else if let channels = buffer.int16ChannelData {
-            for channel in 0..<channelCount {
-                let samples = channels[channel]
-                for frame in 0..<frameCount {
-                    let sample = Double(samples[frame]) / Double(Int16.max)
-                    sumSquares += sample * sample
-                    sampleCount += 1
+        guard
+            let analysisRequest,
+            let samples = Self.monoSamples(from: buffer, maximumCount: AudioSpectrumAnalyzer.bufferSize)
+        else {
+            if analysisRequest != nil {
+                stateQueue.sync {
+                    if analysisRequest?.generation == inputAnalysisGeneration {
+                        isInputAnalysisPending = false
+                    }
                 }
             }
-        } else if let channels = buffer.int32ChannelData {
-            for channel in 0..<channelCount {
-                let samples = channels[channel]
-                for frame in 0..<frameCount {
-                    let sample = Double(samples[frame]) / Double(Int32.max)
-                    sumSquares += sample * sample
-                    sampleCount += 1
-                }
-            }
+            return
         }
 
-        guard sampleCount > 0 else { return 0 }
+        analysisQueue.async { [weak self] in
+            guard let self else { return }
+            let analysis = self.spectrumAnalyzer.analysis(from: samples)
+            let shouldEmit = self.stateQueue.sync { () -> Bool in
+                guard analysisRequest.generation == self.inputAnalysisGeneration else { return false }
+                self.isInputAnalysisPending = false
+                return self.inputAnalysisHandler != nil
+            }
 
-        let rms = sqrt(sumSquares / Double(sampleCount))
-        return min(1, max(0, sqrt(rms) * 2.6))
+            if shouldEmit {
+                analysisRequest.handler(analysis)
+            }
+        }
+    }
+
+    private static func monoSamples(
+        from buffer: AVAudioPCMBuffer,
+        maximumCount: Int
+    ) -> [Float]? {
+        let frameCount = min(Int(buffer.frameLength), maximumCount)
+        guard frameCount > 0 else { return nil }
+
+        if let samples = buffer.floatChannelData?[0] {
+            return Array(UnsafeBufferPointer(start: samples, count: frameCount))
+        }
+
+        var result = [Float](repeating: 0, count: frameCount)
+        if let samples = buffer.int16ChannelData?[0] {
+            let scale = 1 / Float(Int16.max)
+            for index in 0..<frameCount {
+                result[index] = Float(samples[index]) * scale
+            }
+            return result
+        }
+
+        if let samples = buffer.int32ChannelData?[0] {
+            let scale = 1 / Float(Int32.max)
+            for index in 0..<frameCount {
+                result[index] = Float(samples[index]) * scale
+            }
+            return result
+        }
+
+        return nil
     }
 
     private func configureStreamingConverterLocked(inputFormat: AVAudioFormat) {
@@ -365,8 +386,8 @@ final class AudioRecorder: @unchecked Sendable {
 }
 
 private final class AudioSpectrumAnalyzer {
-    private let bufferSize = 2_048
-    private let sampleAmount = 200
+    static let bufferSize = 1_024
+    private let sampleAmount = 144
     private let downsampleFactor = 8
     private let magnitudeLimit: Float = 80
     private let setup: OpaquePointer?
@@ -378,14 +399,14 @@ private final class AudioSpectrumAnalyzer {
     private var magnitudes: [Float]
 
     init() {
-        setup = vDSP_DFT_zop_CreateSetup(nil, UInt(bufferSize), .FORWARD)
-        var window = [Float](repeating: 0, count: bufferSize)
-        vDSP_hann_window(&window, UInt(bufferSize), Int32(vDSP_HANN_NORM))
+        setup = vDSP_DFT_zop_CreateSetup(nil, UInt(Self.bufferSize), .FORWARD)
+        var window = [Float](repeating: 0, count: Self.bufferSize)
+        vDSP_hann_window(&window, UInt(Self.bufferSize), Int32(vDSP_HANN_NORM))
         self.window = window
-        realIn = [Float](repeating: 0, count: bufferSize)
-        imagIn = [Float](repeating: 0, count: bufferSize)
-        realOut = [Float](repeating: 0, count: bufferSize)
-        imagOut = [Float](repeating: 0, count: bufferSize)
+        realIn = [Float](repeating: 0, count: Self.bufferSize)
+        imagIn = [Float](repeating: 0, count: Self.bufferSize)
+        realOut = [Float](repeating: 0, count: Self.bufferSize)
+        imagOut = [Float](repeating: 0, count: Self.bufferSize)
         magnitudes = [Float](repeating: 0, count: sampleAmount)
     }
 
@@ -395,21 +416,25 @@ private final class AudioSpectrumAnalyzer {
         }
     }
 
-    func spectrum(from buffer: AVAudioPCMBuffer) -> [Double] {
-        guard
-            let setup,
-            let channelData = buffer.floatChannelData?[0],
-            buffer.frameLength > 0
-        else {
-            return Self.silence
+    func analysis(from inputSamples: [Float]) -> AudioInputAnalysis {
+        guard let setup, !inputSamples.isEmpty else {
+            return AudioInputAnalysis(level: 0, spectrum: Self.silence)
         }
 
-        let frameCount = min(Int(buffer.frameLength), bufferSize)
+        var rms: Float = 0
+        inputSamples.withUnsafeBufferPointer { samples in
+            guard let baseAddress = samples.baseAddress else { return }
+            vDSP_rmsqv(baseAddress, 1, &rms, vDSP_Length(samples.count))
+        }
+
+        let level = min(1, max(0, sqrt(Double(rms)) * 2.6))
+        let frameCount = min(inputSamples.count, Self.bufferSize)
         realIn.withUnsafeMutableBufferPointer { destination in
             destination.update(repeating: 0)
-        }
-        realIn.withUnsafeMutableBufferPointer { destination in
-            destination.baseAddress?.update(from: channelData, count: frameCount)
+            inputSamples.withUnsafeBufferPointer { source in
+                guard let sourceAddress = source.baseAddress else { return }
+                destination.baseAddress?.update(from: sourceAddress, count: frameCount)
+            }
         }
         realIn.withUnsafeMutableBufferPointer { samples in
             window.withUnsafeBufferPointer { window in
@@ -420,7 +445,7 @@ private final class AudioSpectrumAnalyzer {
                     1,
                     samples.baseAddress!,
                     1,
-                    vDSP_Length(bufferSize)
+                    vDSP_Length(Self.bufferSize)
                 )
             }
         }
@@ -455,7 +480,7 @@ private final class AudioSpectrumAnalyzer {
             let limited = min(max(magnitudes[magnitudeIndex], 0), magnitudeLimit)
             result[band] = Double(log1p(limited) / magnitudeScale)
         }
-        return result
+        return AudioInputAnalysis(level: level, spectrum: result)
     }
 
     private static let silence = Array(repeating: 0.0, count: AudioRecorder.spectrumBandCount)

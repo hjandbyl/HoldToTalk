@@ -136,11 +136,6 @@ struct TranscriptionOverlayView: View {
     }
 
     @available(macOS 26.0, *)
-    private var voiceGlass: Glass {
-        .regular.tint(Color.recordingAccent.opacity(0.12))
-    }
-
-    @available(macOS 26.0, *)
     private var formingOrbGlassSurface: some View {
         ZStack {
             if nucleusDiameter > 0 {
@@ -148,7 +143,7 @@ struct TranscriptionOverlayView: View {
                     .fill(.clear)
                     .frame(width: nucleusDiameter, height: nucleusDiameter)
                     .offset(x: nucleusOffset)
-                    .glassEffect(voiceGlass, in: Circle())
+                    .glassEffect(.clear, in: Circle())
                     .glassEffectUnion(id: "forming-voice-surface", namespace: glassNamespace)
                     .glassEffectTransition(.materialize)
             }
@@ -158,7 +153,7 @@ struct TranscriptionOverlayView: View {
                     .fill(.clear)
                     .frame(width: bodyDiameter, height: bodyDiameter)
                     .offset(x: bodyOffset)
-                    .glassEffect(voiceGlass, in: Circle())
+                    .glassEffect(.clear, in: Circle())
                     .glassEffectUnion(id: "forming-voice-surface", namespace: glassNamespace)
                     .glassEffectID("voice-surface", in: glassNamespace)
                     .glassEffectTransition(.materialize)
@@ -170,7 +165,7 @@ struct TranscriptionOverlayView: View {
     @available(macOS 26.0, *)
     private var capsuleGlassSurface: some View {
         surfaceBody
-            .glassEffect(voiceGlass, in: Capsule())
+            .glassEffect(.clear, in: Capsule())
             .glassEffectID("voice-surface", in: glassNamespace)
             .glassEffectTransition(.matchedGeometry)
     }
@@ -242,6 +237,12 @@ final class TranscriptionOverlayPresentation: ObservableObject {
     @Published var isVisible = false
     @Published var isDismissing = false
     @Published var stage: Stage = .hidden
+
+    func reset() {
+        isVisible = false
+        isDismissing = false
+        stage = .hidden
+    }
 }
 
 private struct RecordingWaveform: View {
@@ -259,62 +260,85 @@ private struct RecordingWaveform: View {
             return Array(repeating: 0, count: displayBarCount)
         }
 
-        let shaped = visualization.snapshot.spectrum.map { min(1, max(0, $0)) }
-        guard !shaped.isEmpty else {
+        let spectrum = visualization.snapshot.spectrum
+        guard !spectrum.isEmpty else {
             return Array(repeating: 0, count: displayBarCount)
         }
 
-        let upperBound = min(shaped.count, sourceBandCount * 2)
-        let focusedSpectrum = Array(shaped.prefix(upperBound))
-        let sourceBands = (0..<sourceBandCount).map { index in
-            sample(focusedSpectrum, at: index, outputCount: sourceBandCount)
-        }
-
-        return (0..<displayBarCount).map { index in
+        let inputCount = min(spectrum.count, sourceBandCount * 2)
+        var result = [Double](repeating: 0, count: displayBarCount)
+        for index in 0..<displayBarCount {
             let sourceIndex = min(sourceBandCount - 1, abs(index - centerBarIndex))
-            return sourceBands[sourceIndex]
+            result[index] = sample(
+                spectrum,
+                count: inputCount,
+                at: sourceIndex,
+                outputCount: sourceBandCount
+            )
         }
+        return result
     }
 
     var body: some View {
         let samples = displaySamples
+        let activity = CGFloat(min(1, max(0, visualization.snapshot.level)))
 
-        GeometryReader { proxy in
-            let size = proxy.size
+        Canvas(opaque: false, colorMode: .linear, rendersAsynchronously: true) { context, size in
             let availableBarWidth = (size.width - CGFloat(displayBarCount - 1) * barSpacing) / CGFloat(displayBarCount)
             let barWidth = max(1.1, min(2.4, availableBarWidth))
+            let cornerRadius = barWidth / 2
+            var bars = Path()
 
-            HStack(alignment: .center, spacing: barSpacing) {
-                ForEach(samples.indices, id: \.self) { index in
-                    Capsule(style: .continuous)
-                        .fill(barFill(for: samples[index]))
-                        .frame(
-                            width: barWidth,
-                            height: barHeight(for: samples[index], at: index, in: size)
-                        )
-                        .shadow(color: .black.opacity(isRecording ? 0.16 : 0.04), radius: 2.5, x: 0, y: 1.5)
-                        .shadow(color: Color.recordingAccent.opacity(isRecording ? 0.18 : 0), radius: 5, x: 0, y: 0)
-                }
+            for index in samples.indices {
+                let height = barHeight(
+                    for: samples[index],
+                    activity: activity,
+                    at: index,
+                    in: size
+                )
+                let x = CGFloat(index) * (barWidth + barSpacing)
+                let rect = CGRect(x: x, y: (size.height - height) / 2, width: barWidth, height: height)
+                bars.addRoundedRect(
+                    in: rect,
+                    cornerSize: CGSize(width: cornerRadius, height: cornerRadius)
+                )
             }
-            .frame(width: size.width, height: size.height, alignment: .center)
+
+            context.addFilter(.shadow(
+                color: .black.opacity(isRecording ? 0.14 : 0.04),
+                radius: 2,
+                x: 0,
+                y: 1
+            ))
+            context.fill(
+                bars,
+                with: .linearGradient(
+                    Gradient(colors: waveformColors(activity: activity)),
+                    startPoint: CGPoint(x: 0, y: 0),
+                    endPoint: CGPoint(x: size.width, y: size.height)
+                )
+            )
         }
-        .animation(.easeOut(duration: 0.08), value: samples)
-        .animation(.easeOut(duration: 0.08), value: visualization.snapshot.level)
     }
 
-    private func sample(_ values: [Double], at index: Int, outputCount: Int) -> Double {
-        guard !values.isEmpty else { return 0 }
-        guard values.count > 1, outputCount > 1 else { return values[0] }
+    private func sample(_ values: [Double], count: Int, at index: Int, outputCount: Int) -> Double {
+        guard count > 0 else { return 0 }
+        guard count > 1, outputCount > 1 else { return min(1, max(0, values[0])) }
 
-        let position = Double(index) / Double(outputCount - 1) * Double(values.count - 1)
+        let position = Double(index) / Double(outputCount - 1) * Double(count - 1)
         let lowerIndex = Int(position.rounded(.down))
-        let upperIndex = min(values.count - 1, lowerIndex + 1)
+        let upperIndex = min(count - 1, lowerIndex + 1)
         let fraction = position - Double(lowerIndex)
-        return values[lowerIndex] * (1 - fraction) + values[upperIndex] * fraction
+        let value = values[lowerIndex] * (1 - fraction) + values[upperIndex] * fraction
+        return min(1, max(0, value))
     }
 
-    private func barHeight(for sample: Double, at index: Int, in size: CGSize) -> CGFloat {
-        let activity = CGFloat(min(1, max(0, visualization.snapshot.level)))
+    private func barHeight(
+        for sample: Double,
+        activity: CGFloat,
+        at index: Int,
+        in size: CGSize
+    ) -> CGFloat {
         let sourceIndex = min(sourceBandCount - 1, abs(index - centerBarIndex))
         let envelope = sourceIndex < barEnvelope.count ? barEnvelope[sourceIndex] : 0.72
         let shapedSample = pow(CGFloat(min(1, max(0, sample))), 0.38)
@@ -323,15 +347,11 @@ private struct RecordingWaveform: View {
         return min(size.height, max(quietFloor, activeHeight))
     }
 
-    private func barFill(for sample: Double) -> LinearGradient {
-        let intensity = min(1, max(0, sample))
-        return LinearGradient(
-            colors: [
-                Color.recordingAccent.opacity(isRecording ? 0.86 + intensity * 0.12 : 0.28),
-                Color.recordingAccentHighlight.opacity(isRecording ? 0.68 + intensity * 0.22 : 0.18)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    private func waveformColors(activity: CGFloat) -> [Color] {
+        let intensity = Double(activity)
+        return [
+            Color.recordingAccent.opacity(isRecording ? 0.86 + intensity * 0.12 : 0.28),
+            Color.recordingAccentHighlight.opacity(isRecording ? 0.68 + intensity * 0.22 : 0.18)
+        ]
     }
 }

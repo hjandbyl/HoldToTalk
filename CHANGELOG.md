@@ -6,6 +6,24 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-15
+
+### Added
+
+- Added Accessibility-based text insertion that writes directly to the focused UI element when the app has Accessibility permission, falling back to the paste shortcut otherwise.
+
+### Changed
+
+- Preserved the entire general pasteboard across paste-based text injection and restored it sooner after the paste instead of keeping only the previous text string.
+- Moved input level and spectrum analysis off the audio capture path onto a dedicated background queue, coalescing pending analyses so only the latest sample reaches the UI.
+- Reduced the spectrum FFT buffer size and band count and computed the recording level with a vDSP RMS routine so capture keeps up with a lighter workload.
+- Rendered the recording waveform in a single asynchronous Canvas pass with a shared gradient instead of one SwiftUI capsule per bar.
+- Reused the transcription overlay panel and its presentation state across recordings so the glass surface stays settled between sessions.
+
+### Fixed
+
+- Skipped negligible input level and spectrum updates so idle input no longer forces repeated UI invalidations.
+
 ## [0.2.0] - 2026-09-10
 
 ### Changed

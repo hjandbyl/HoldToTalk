@@ -8,7 +8,8 @@ final class TranscriptionOverlayController {
     private var presentation: TranscriptionOverlayPresentation?
     private var displayRevision = 0
 
-    private let panelSize = NSSize(width: 560, height: 66)
+    // Leave room for the 60-point glass surface's glow outside its bounds.
+    private let panelSize = NSSize(width: 600, height: 100)
     private let materializeAnimation = Animation.easeOut(duration: 0.10)
     private let settleAnimation = Animation.spring(duration: 0.18, bounce: 0.10)
     private let dismissalAnimation = Animation.easeIn(duration: 0.14)
@@ -23,12 +24,24 @@ final class TranscriptionOverlayController {
         displayRevision += 1
         let revision = displayRevision
 
-        panel?.orderOut(nil)
+        let presentation: TranscriptionOverlayPresentation
+        let panel: NSPanel
+        if let existingPanel = self.panel, let existingPresentation = self.presentation {
+            panel = existingPanel
+            presentation = existingPresentation
+            panel.orderOut(nil)
+        } else {
+            presentation = TranscriptionOverlayPresentation()
+            panel = makePanel(presentation: presentation)
+            self.panel = panel
+            self.presentation = presentation
+        }
 
-        let presentation = TranscriptionOverlayPresentation()
-        let panel = makePanel(presentation: presentation)
-        self.panel = panel
-        self.presentation = presentation
+        var resetTransaction = Transaction(animation: nil)
+        resetTransaction.disablesAnimations = true
+        withTransaction(resetTransaction) {
+            presentation.reset()
+        }
         positionPanel(panel)
 
         panel.orderFrontRegardless()
@@ -86,8 +99,7 @@ final class TranscriptionOverlayController {
                 }
 
                 panel.orderOut(nil)
-                self.panel = nil
-                self.presentation = nil
+                presentation.reset()
             }
         }
     }
@@ -99,6 +111,7 @@ final class TranscriptionOverlayController {
                 liveTranscription: controller.liveTranscription,
                 presentation: presentation
             )
+            .frame(width: panelSize.width, height: panelSize.height)
         )
         hostingView.frame = NSRect(origin: .zero, size: panelSize)
 
@@ -161,7 +174,8 @@ final class TranscriptionOverlayController {
         let size = panel.frame.size
         let origin = NSPoint(
             x: visibleFrame.midX - size.width / 2,
-            y: visibleFrame.minY + 84
+            // Keep the surface centered at its original height above the visible bottom.
+            y: visibleFrame.minY + 117 - size.height / 2
         )
         panel.setFrameOrigin(origin)
     }

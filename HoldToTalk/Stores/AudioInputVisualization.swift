@@ -16,15 +16,23 @@ final class AudioInputVisualization: ObservableObject {
     func update(with analysis: AudioInputAnalysis) {
         let clampedLevel = min(1, max(0, analysis.level))
         let levelSmoothing = clampedLevel > snapshot.level ? 0.65 : 0.24
-        let smoothedLevel = snapshot.level * (1 - levelSmoothing) + clampedLevel * levelSmoothing
+        let nextLevel = snapshot.level * (1 - levelSmoothing) + clampedLevel * levelSmoothing
+        let smoothedLevel = nextLevel < 0.002 ? 0 : nextLevel
 
-        let smoothedSpectrum = (0..<AudioRecorder.spectrumBandCount).map { index in
+        var smoothedSpectrum = [Double]()
+        smoothedSpectrum.reserveCapacity(AudioRecorder.spectrumBandCount)
+        var maximumChange = abs(smoothedLevel - snapshot.level)
+        for index in 0..<AudioRecorder.spectrumBandCount {
             let incoming = min(1, max(0, index < analysis.spectrum.count ? analysis.spectrum[index] : 0))
             let current = index < snapshot.spectrum.count ? snapshot.spectrum[index] : 0
             let smoothing = incoming > current ? 0.72 : 0.30
-            return current * (1 - smoothing) + incoming * smoothing
+            let nextValue = current * (1 - smoothing) + incoming * smoothing
+            let smoothedValue = nextValue < 0.002 ? 0 : nextValue
+            smoothedSpectrum.append(smoothedValue)
+            maximumChange = max(maximumChange, abs(smoothedValue - current))
         }
 
+        guard maximumChange >= 0.001 else { return }
         snapshot = Snapshot(level: smoothedLevel, spectrum: smoothedSpectrum)
     }
 
