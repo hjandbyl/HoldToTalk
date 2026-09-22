@@ -18,7 +18,7 @@ final class AudioRecorder: @unchecked Sendable {
         qos: .userInitiated
     )
     private let spectrumAnalyzer = AudioSpectrumAnalyzer()
-    private var engine: AVAudioEngine?
+    private var captureBackend: AudioCaptureBackend?
     private var audioFile: AVAudioFile?
     private var recordingURL: URL?
     private var capturedFrames: AVAudioFramePosition = 0
@@ -86,11 +86,11 @@ final class AudioRecorder: @unchecked Sendable {
         }
 
         do {
-            let engine = try configuredEngine(inputDeviceUID: inputDeviceUID)
+            let captureBackend = try configuredCaptureBackend(inputDeviceUID: inputDeviceUID)
             stateQueue.sync {
-                self.engine = engine
+                self.captureBackend = captureBackend
             }
-            try engine.start()
+            try captureBackend.start()
             return url
         } catch {
             _ = stop()
@@ -99,18 +99,37 @@ final class AudioRecorder: @unchecked Sendable {
         }
     }
 
-    private func configuredEngine(inputDeviceUID: String?) throws -> AVAudioEngine {
+    private func configuredCaptureBackend(inputDeviceUID: String?) throws -> AudioCaptureBackend {
+        guard let inputDeviceUID, !inputDeviceUID.isEmpty else {
+            return .engine(try configuredDefaultEngine())
+        }
+
+        guard let device = AudioDeviceInspector.inputDevice(uid: inputDeviceUID) else {
+            throw AudioRecorderError.inputDeviceUnavailable
+        }
+
+        stateQueue.sync {
+            voiceProcessingDescription = L10n.tr("direct microphone capture")
+        }
+
+        return .audioUnit(
+            try AudioUnitInputCapture(deviceID: device.deviceID) { [weak self] buffer in
+                self?.write(buffer)
+            }
+        )
+    }
+
+    private func configuredDefaultEngine() throws -> AVAudioEngine {
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
-        let selectedInputFormat = try configureInputDevice(inputDeviceUID, on: inputNode)
         configureVoiceProcessing(on: inputNode)
 
-        let inputFormat = selectedInputFormat ?? inputNode.outputFormat(forBus: 0)
+        let inputFormat = inputNode.outputFormat(forBus: 0)
         guard inputFormat.channelCount > 0 else {
             throw AudioRecorderError.noInputDevice
         }
 
-        let tapBufferSize: AVAudioFrameCount = AudioDeviceInspector.isBluetoothInputDevice(uid: inputDeviceUID)
+        let tapBufferSize: AVAudioFrameCount = AudioDeviceInspector.isBluetoothInputDevice(uid: nil)
             ? 512
             : 2_048
         inputNode.removeTap(onBus: 0)
@@ -120,36 +139,6 @@ final class AudioRecorder: @unchecked Sendable {
 
         engine.prepare()
         return engine
-    }
-
-    private func configureInputDevice(_ uid: String?, on inputNode: AVAudioInputNode) throws -> AVAudioFormat? {
-        guard let uid, !uid.isEmpty else { return nil }
-        guard let device = AudioDeviceInspector.inputDevice(uid: uid) else {
-            throw AudioRecorderError.inputDeviceUnavailable
-        }
-        var deviceID = device.deviceID
-        guard let audioUnit = inputNode.audioUnit else {
-            throw AudioRecorderError.couldNotAccessInputAudioUnit
-        }
-
-        let status = AudioUnitSetProperty(
-            audioUnit,
-            kAudioOutputUnitProperty_CurrentDevice,
-            kAudioUnitScope_Global,
-            0,
-            &deviceID,
-            UInt32(MemoryLayout<AudioDeviceID>.size)
-        )
-
-        guard status == noErr else {
-            throw AudioRecorderError.couldNotSelectInputDevice(status)
-        }
-
-        guard let inputFormat = AudioDeviceInspector.inputCaptureFormat(deviceID: deviceID) else {
-            throw AudioRecorderError.couldNotReadInputFormat
-        }
-
-        return inputFormat
     }
 
     private func configureVoiceProcessing(on inputNode: AVAudioInputNode) {
@@ -163,7 +152,7 @@ final class AudioRecorder: @unchecked Sendable {
     }
 
     func stop() -> URL? {
-        let result = stateQueue.sync { () -> (url: URL?, engine: AVAudioEngine?) in
+        let result = stateQueue.sync { () -> (url: URL?, captureBackend: AudioCaptureBackend?) in
             let url = recordingURL
             audioFile = nil
             recordingURL = nil
@@ -174,13 +163,12 @@ final class AudioRecorder: @unchecked Sendable {
             streamingOutputBuffer = nil
             isInputAnalysisPending = false
             inputAnalysisGeneration &+= 1
-            let runningEngine = engine
-            self.engine = nil
-            return (url, runningEngine)
+            let runningCaptureBackend = captureBackend
+            self.captureBackend = nil
+            return (url, runningCaptureBackend)
         }
 
-        result.engine?.inputNode.removeTap(onBus: 0)
-        result.engine?.stop()
+        result.captureBackend?.stop()
         return result.url
     }
 
@@ -492,6 +480,9 @@ enum AudioRecorderError: LocalizedError {
     case couldNotAccessInputAudioUnit
     case couldNotSelectInputDevice(OSStatus)
     case couldNotReadInputFormat
+    case couldNotConfigureInputAudioUnit(OSStatus)
+    case couldNotCreateInputBuffer
+    case couldNotStartInputAudioUnit(OSStatus)
 
     var errorDescription: String? {
         switch self {
@@ -505,6 +496,36 @@ enum AudioRecorderError: LocalizedError {
             return L10n.tr("Could not select microphone input device: %d", status)
         case .couldNotReadInputFormat:
             return L10n.tr("Could not read the selected microphone format.")
+        case .couldNotConfigureInputAudioUnit(let status):
+            return L10n.tr("Could not configure microphone input unit: %d", status)
+        case .couldNotCreateInputBuffer:
+            return L10n.tr("Could not create microphone input buffer.")
+        case .couldNotStartInputAudioUnit(let status):
+            return L10n.tr("Could not start microphone input unit: %d", status)
+        }
+    }
+}
+
+private enum AudioCaptureBackend {
+    case engine(AVAudioEngine)
+    case audioUnit(AudioUnitInputCapture)
+
+    func start() throws {
+        switch self {
+        case .engine(let engine):
+            try engine.start()
+        case .audioUnit(let audioUnit):
+            try audioUnit.start()
+        }
+    }
+
+    func stop() {
+        switch self {
+        case .engine(let engine):
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        case .audioUnit(let audioUnit):
+            audioUnit.stop()
         }
     }
 }

@@ -4,7 +4,13 @@ import Foundation
 
 @MainActor
 final class TextInjector {
-    private static let pasteboardRestoreDelay: TimeInterval = 0.12
+    private static let accessibilityWebAreaRole = "AXWebArea"
+    private static let pasteboardRestoreDelay: TimeInterval = 0.8
+    private static let keyboardEventPreferredBundleIdentifiers: Set<String> = [
+        "com.openai.chat",
+        "com.openai.chatgpt",
+        "com.openai.codex",
+    ]
 
     private var pasteboardInjectionRevision = 0
     private var preservedPasteboard: PasteboardSnapshot?
@@ -28,24 +34,43 @@ final class TextInjector {
 
             if requiresActivation {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                    self?.inject(trimmedText)
+                    self?.inject(trimmedText, targetApplication: targetApplication)
                 }
                 return
             }
         }
 
         DispatchQueue.main.async { [weak self] in
-            self?.inject(trimmedText)
+            self?.inject(trimmedText, targetApplication: targetApplication)
         }
     }
 
-    private func inject(_ trimmedText: String) {
-        guard !insertUsingAccessibility(trimmedText) else { return }
-        pasteUsingTemporaryPasteboard(trimmedText)
+    private func inject(_ text: String, targetApplication: NSRunningApplication?) {
+        let focusedElement = focusedAccessibilityElement()
+        let requiresKeyboardInput = Self.prefersKeyboardEvents(for: targetApplication)
+            || focusedElement.map(isInsideWebArea) == true
+
+        if requiresKeyboardInput {
+            guard !postUnicodeKeyboardInput(text) else { return }
+            pasteUsingTemporaryPasteboard(text)
+            return
+        }
+
+        if let focusedElement, insertUsingAccessibility(text, into: focusedElement) {
+            return
+        }
+
+        guard !postUnicodeKeyboardInput(text) else { return }
+        pasteUsingTemporaryPasteboard(text)
     }
 
-    private func insertUsingAccessibility(_ text: String) -> Bool {
-        guard PermissionHelper.isAccessibilityTrusted else { return false }
+    private static func prefersKeyboardEvents(for application: NSRunningApplication?) -> Bool {
+        guard let bundleIdentifier = application?.bundleIdentifier?.lowercased() else { return false }
+        return keyboardEventPreferredBundleIdentifiers.contains(bundleIdentifier)
+    }
+
+    private func focusedAccessibilityElement() -> AXUIElement? {
+        guard PermissionHelper.isAccessibilityTrusted else { return nil }
 
         let systemWideElement = AXUIElementCreateSystemWide()
         var focusedValue: CFTypeRef?
@@ -55,12 +80,52 @@ final class TextInjector {
                 kAXFocusedUIElementAttribute as CFString,
                 &focusedValue
             ) == .success,
-            let focusedValue
+            let focusedValue,
+            CFGetTypeID(focusedValue) == AXUIElementGetTypeID()
         else {
-            return false
+            return nil
         }
 
-        let focusedElement = focusedValue as! AXUIElement
+        return (focusedValue as! AXUIElement)
+    }
+
+    private func isInsideWebArea(_ element: AXUIElement) -> Bool {
+        var currentElement: AXUIElement? = element
+
+        for _ in 0..<32 {
+            guard let elementToInspect = currentElement else { return false }
+
+            var roleValue: CFTypeRef?
+            if AXUIElementCopyAttributeValue(
+                elementToInspect,
+                kAXRoleAttribute as CFString,
+                &roleValue
+            ) == .success,
+               let role = roleValue as? String,
+               role == Self.accessibilityWebAreaRole {
+                return true
+            }
+
+            var parentValue: CFTypeRef?
+            guard
+                AXUIElementCopyAttributeValue(
+                    elementToInspect,
+                    kAXParentAttribute as CFString,
+                    &parentValue
+                ) == .success,
+                let parentValue,
+                CFGetTypeID(parentValue) == AXUIElementGetTypeID()
+            else {
+                return false
+            }
+
+            currentElement = (parentValue as! AXUIElement)
+        }
+
+        return false
+    }
+
+    private func insertUsingAccessibility(_ text: String, into focusedElement: AXUIElement) -> Bool {
         var isSettable = DarwinBoolean(false)
         guard
             AXUIElementIsAttributeSettable(
@@ -78,6 +143,31 @@ final class TextInjector {
             kAXSelectedTextAttribute as CFString,
             text as CFTypeRef
         ) == .success
+    }
+
+    private func postUnicodeKeyboardInput(_ text: String) -> Bool {
+        guard let source = CGEventSource(stateID: .combinedSessionState) else { return false }
+
+        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true)
+        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
+        guard let keyDown, let keyUp else { return false }
+
+        let unicodeUnits = Array(text.utf16)
+        unicodeUnits.withUnsafeBufferPointer { buffer in
+            keyDown.keyboardSetUnicodeString(
+                stringLength: buffer.count,
+                unicodeString: buffer.baseAddress
+            )
+            keyUp.keyboardSetUnicodeString(
+                stringLength: buffer.count,
+                unicodeString: buffer.baseAddress
+            )
+        }
+        keyDown.flags = []
+        keyUp.flags = []
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
+        return true
     }
 
     private func pasteUsingTemporaryPasteboard(_ text: String) {

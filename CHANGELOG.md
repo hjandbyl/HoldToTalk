@@ -6,6 +6,13 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-22
+
+### Fixed
+
+- Captured explicitly selected microphones through a device-bound Core Audio input unit, preventing the audio engine from silently falling back to the system-default Bluetooth input.
+- Restored automatic text insertion in web-based editors such as ChatGPT by sending Unicode keyboard input events that trigger the editor without modifying the clipboard, while retaining the paste shortcut only as a fallback.
+
 ## [0.2.1] - 2026-09-15
 
 ### Added

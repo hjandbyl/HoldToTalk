@@ -33,7 +33,7 @@ Useful variants:
 ./script/build_and_run.sh --telemetry
 ```
 
-The script downloads the sherpa-onnx runtime into `ThirdParty/` if needed, builds the native Xcode target into a repository-local Derived Data directory, packages `dist/HoldToTalk.app` or `dist-adhoc/HoldToTalk.app`, embeds assets and required dylibs through the Xcode target, and signs the app. Building through the native target preserves the active SDK metadata used by macOS to select the current system appearance.
+The script stops any running `HoldToTalk` process, downloads the sherpa-onnx runtime into `ThirdParty/` if needed, builds the native Xcode target into a repository-local Derived Data directory, packages `dist/HoldToTalk.app` or `dist-adhoc/HoldToTalk.app`, embeds assets and required dylibs through the Xcode target, and signs the app. Building through the native target preserves the active SDK metadata used by macOS to select the current system appearance.
 
 If local signing fails, use:
 
@@ -43,11 +43,13 @@ If local signing fails, use:
 
 or set `HOLDTOTALK_SIGN_IDENTITY` to a stable local signing identity. Accessibility permission is tied to code signing identity, so ad-hoc rebuilds may require re-granting Accessibility permission.
 
-For pure compilation checks, prefer the script over raw `swift build` because the script sets cache paths and ensures the local sherpa runtime is present. If raw SwiftPM is needed, mirror the script's flags:
+For a narrow Swift-only compilation check, use raw SwiftPM when the local sherpa runtime is already present. This avoids stopping and repackaging a currently running app. Mirror the repository cache flags:
 
 ```bash
 swift build --disable-sandbox --cache-path .build/cache/swiftpm --manifest-cache local
 ```
+
+If the runtime is missing, or the change touches the app target, resources, packaging, signing, or Xcode project settings, use `./script/build_and_run.sh build` instead.
 
 When changing Xcode project structure, assets, signing, linker settings, or dylib embedding, also validate the Xcode target:
 
@@ -55,9 +57,18 @@ When changing Xcode project structure, assets, signing, linker settings, or dyli
 xcodebuild -quiet -project HoldToTalk.xcodeproj -scheme HoldToTalk -configuration Debug build
 ```
 
+## Tool Selection
+
+- Repository scripts and the documented CLI commands are the canonical verification path.
+- When Xcode MCP tools are available, use them for Xcode-specific inspection and diagnosis, including schemes, targets, build settings, project structure, previews, and IDE-reported errors.
+- Xcode MCP results do not replace the required script or CLI verification for the changed area.
+- If Xcode MCP is unavailable in the current session, fall back to `xcodebuild` or the repository scripts and report that fallback.
+
 ## Testing
 
 No XCTest target is currently defined in `Package.swift`. When changing behavior, use focused compilation checks and, for app workflows, `./script/build_and_run.sh --verify` when practical.
+
+`./script/build_and_run.sh --verify` is a launch smoke test only: it builds the app, opens it, and checks that the process remains running. It does not validate recording, transcription, the global shortcut, Accessibility permission, or text insertion. Do not report those workflows as verified unless they were exercised separately.
 
 ## Architecture Notes
 
@@ -109,18 +120,27 @@ Keep dylib linking in build settings and dylib embedding in the `Embed ThirdPart
 
 ## Commit Rules
 
-- Before every commit, update `CHANGELOG.md` with a clear entry for the user-visible or engineering changes being committed.
-- Do not create a commit that changes behavior, UI, packaging, scripts, or project structure without including the corresponding changelog update in the same commit.
+- Before committing changes to behavior, UI, packaging, scripts, project structure, dependencies, or engineering workflow, update `CHANGELOG.md` with a clear entry in the same commit.
+- Pure documentation, typo, or comment-only commits that do not alter the workflow or user-visible behavior do not require a changelog entry unless the user asks for one.
+
+## Code Review Rules
+
+- Flag new user-visible strings that bypass `L10n.tr(...)`.
+- Flag actor-isolation violations around `@MainActor` controller state and callbacks from audio, shortcut, and recognition services.
+- Treat changes to permissions, global shortcuts, audio capture, Keychain, text insertion, signing, or runtime embedding as high risk; check cleanup, error paths, and the matching verification command.
+- Flag loose asset or dylib references, `Recovered References`, or project-file changes that conflict with the synchronized-group and embedding rules above.
 
 ## Verification Checklist
 
 Use the narrowest verification that matches the change:
 
-- Swift-only source changes: `swift build --disable-sandbox --cache-path .build/cache/swiftpm --manifest-cache local`
-- Packaging or runtime changes: `./script/build_and_run.sh build`
-- Launch behavior changes: `./script/build_and_run.sh --verify`
+- Swift-only source changes, quick compilation: `swift build --disable-sandbox --cache-path .build/cache/swiftpm --manifest-cache local`
+- App integration, packaging, or runtime changes: `./script/build_and_run.sh build`
+- Launch behavior changes: `./script/build_and_run.sh --verify` (launch smoke test only)
 - Xcode project, asset, signing, or dylib changes: `xcodebuild -quiet -project HoldToTalk.xcodeproj -scheme HoldToTalk -configuration Debug build`
 - pbxproj edits: `plutil -lint HoldToTalk.xcodeproj/project.pbxproj`
+
+Always report which checks ran, which were skipped, and why. Compilation success or the launch smoke test alone is not evidence that recording, transcription, shortcuts, permissions, or text insertion work end to end.
 
 ## Do Not
 
