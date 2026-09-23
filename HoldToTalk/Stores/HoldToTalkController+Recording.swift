@@ -128,6 +128,13 @@ extension HoldToTalkController {
         isRecording = false
         resetInputAnalysis()
 
+        if trigger != Self.manualRecordingTrigger {
+            scheduleOverlayHide(
+                after: maximumOverlayPostReleaseDuration,
+                sessionID: recognitionSessionID
+            )
+        }
+
         guard let audioURL else {
             cancelFnTurnWithoutTranscribing(
                 selectedEngine: selectedEngine,

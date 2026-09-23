@@ -10,6 +10,7 @@ final class GlobalFnKeyMonitor {
 
     var shortcut: HoldShortcut = .defaultShortcut {
         didSet {
+            stopModifierStateReconciliation()
             isFnDown = false
         }
     }
@@ -17,6 +18,7 @@ final class GlobalFnKeyMonitor {
     private var globalMonitor: Any?
     private var localMonitor: Any?
     private var isFnDown = false
+    private var modifierStateReconciliationTimer: DispatchSourceTimer?
 
     var isRunning: Bool {
         globalMonitor != nil && localMonitor != nil
@@ -49,6 +51,7 @@ final class GlobalFnKeyMonitor {
     }
 
     func rearm() throws {
+        stopModifierStateReconciliation()
         isFnDown = false
 
         guard isRunning else {
@@ -68,6 +71,7 @@ final class GlobalFnKeyMonitor {
 
         globalMonitor = nil
         localMonitor = nil
+        stopModifierStateReconciliation()
         isFnDown = false
     }
 
@@ -97,7 +101,52 @@ final class GlobalFnKeyMonitor {
         guard nextFnDown != isFnDown else { return }
 
         isFnDown = nextFnDown
+        if nextFnDown, shortcut.keyCode == nil {
+            startModifierStateReconciliation()
+        } else {
+            stopModifierStateReconciliation()
+        }
         delegate?.globalFnKeyMonitor(self, didChangeFnKeyDown: nextFnDown)
+    }
+
+    private func startModifierStateReconciliation() {
+        guard modifierStateReconciliationTimer == nil else { return }
+
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(
+            deadline: .now() + .milliseconds(100),
+            repeating: .milliseconds(100),
+            leeway: .milliseconds(25)
+        )
+        timer.setEventHandler { [weak self] in
+            self?.reconcileModifierState()
+        }
+        modifierStateReconciliationTimer = timer
+        timer.resume()
+    }
+
+    private func stopModifierStateReconciliation() {
+        modifierStateReconciliationTimer?.cancel()
+        modifierStateReconciliationTimer = nil
+    }
+
+    private func reconcileModifierState() {
+        guard isFnDown, shortcut.keyCode == nil else {
+            stopModifierStateReconciliation()
+            return
+        }
+
+        let eventFlags = CGEventSource.flagsState(.combinedSessionState)
+        var modifierFlags: NSEvent.ModifierFlags = []
+        if eventFlags.contains(.maskCommand) { modifierFlags.insert(.command) }
+        if eventFlags.contains(.maskAlternate) { modifierFlags.insert(.option) }
+        if eventFlags.contains(.maskControl) { modifierFlags.insert(.control) }
+        if eventFlags.contains(.maskShift) { modifierFlags.insert(.shift) }
+        if eventFlags.contains(.maskSecondaryFn) { modifierFlags.insert(.function) }
+
+        if !shortcut.matchesModifierState(modifierFlags) {
+            updateFnDown(false)
+        }
     }
 }
 

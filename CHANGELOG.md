@@ -6,6 +6,13 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-23
+
+### Fixed
+
+- Reconciled held modifier shortcuts against the current system key state so an occasionally missed Fn release event cannot leave recording and its overlay active, and capped the overlay's post-release lifetime while recognition finishes.
+- Used the system-default Liquid Glass appearance for the transcription overlay without custom background sampling, tinting, or app-calculated light/dark decisions.
+
 ## [0.2.2] - 2026-09-22
 
 ### Fixed

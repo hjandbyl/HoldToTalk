@@ -105,6 +105,7 @@ final class HoldToTalkController: ObservableObject {
     let minimumFnHoldDurationForRecognition: TimeInterval = 0.22
     let standardRecordingTailPadding: TimeInterval = 0
     let bluetoothRecordingTailPadding: TimeInterval = 0.35
+    let maximumOverlayPostReleaseDuration: TimeInterval = 2
     static let manualRecordingTrigger = "Manual"
     static let removesTrailingSentencePeriodDefaultsKey = "HoldToTalk.removesTrailingSentencePeriod"
     static let percentFormatter: NumberFormatter = {

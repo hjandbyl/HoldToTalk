@@ -143,7 +143,7 @@ struct TranscriptionOverlayView: View {
                     .fill(.clear)
                     .frame(width: nucleusDiameter, height: nucleusDiameter)
                     .offset(x: nucleusOffset)
-                    .glassEffect(.clear, in: Circle())
+                    .glassEffect(in: Circle())
                     .glassEffectUnion(id: "forming-voice-surface", namespace: glassNamespace)
                     .glassEffectTransition(.materialize)
             }
@@ -153,7 +153,7 @@ struct TranscriptionOverlayView: View {
                     .fill(.clear)
                     .frame(width: bodyDiameter, height: bodyDiameter)
                     .offset(x: bodyOffset)
-                    .glassEffect(.clear, in: Circle())
+                    .glassEffect(in: Circle())
                     .glassEffectUnion(id: "forming-voice-surface", namespace: glassNamespace)
                     .glassEffectID("voice-surface", in: glassNamespace)
                     .glassEffectTransition(.materialize)
@@ -165,7 +165,7 @@ struct TranscriptionOverlayView: View {
     @available(macOS 26.0, *)
     private var capsuleGlassSurface: some View {
         surfaceBody
-            .glassEffect(.clear, in: Capsule())
+            .glassEffect(in: Capsule())
             .glassEffectID("voice-surface", in: glassNamespace)
             .glassEffectTransition(.matchedGeometry)
     }
