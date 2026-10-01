@@ -86,7 +86,7 @@ Run tests without starting the app or accessing the microphone, Keychain, or clo
 ./script/test.sh
 ```
 
-The script uses the existing sherpa runtime and adds its directory to the test build's rpath. Tests use fake recognition/capture/insertion services and a controllable clock, plus isolated temporary files and a private pasteboard. The native Xcode scheme remains the application build; automated tests run through SwiftPM.
+The script uses the existing sherpa runtime and adds its directory to the test build's rpath. Tests use fake recognition/capture/insertion services and a controllable clock, plus isolated temporary files and a private pasteboard. In Xcode's Project navigator, expand `Tests` → `HoldToTalkTests` to browse the test sources; this folder synchronizes with the filesystem. The native Xcode scheme remains the application build; automated tests run through SwiftPM using the command above.
 
 Validation commands:
 

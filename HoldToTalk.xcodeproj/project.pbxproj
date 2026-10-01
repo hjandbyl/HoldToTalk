@@ -19,6 +19,7 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		20A30000000000000000001A /* HoldToTalk */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = HoldToTalk; sourceTree = "<group>"; };
 		20A30000000000000000001B /* CSherpaOnnx */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = CSherpaOnnx; sourceTree = "<group>"; };
+		20A30000000000000000001C /* Tests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Tests; sourceTree = "<group>"; };
 		20A30000000000000000001D /* ThirdParty */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = ThirdParty; sourceTree = "<group>"; };
 		20A30000000000000000001E /* script */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = script; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -49,6 +50,7 @@
 				20A30000000000000000000F /* AGENTS.md */,
 				20A30000000000000000001A /* HoldToTalk */,
 				20A30000000000000000001B /* CSherpaOnnx */,
+				20A30000000000000000001C /* Tests */,
 				20A30000000000000000001D /* ThirdParty */,
 				20A30000000000000000001E /* script */,
 				20A30000000000000000000A /* README.md */,

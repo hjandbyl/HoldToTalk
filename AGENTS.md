@@ -84,7 +84,8 @@ Keep UI changes consistent with the existing SwiftUI split-view structure and Ap
 
 ## Xcode Project Rules
 
-- The Xcode project uses File System Synchronized Groups for `HoldToTalk/`, `CSherpaOnnx/`, `ThirdParty/`, and `script/`.
+- The Xcode project uses File System Synchronized Groups for `HoldToTalk/`, `CSherpaOnnx/`, `Tests/`, `ThirdParty/`, and `script/`.
+- `Tests/` is visible in the project navigator but belongs to the SwiftPM test target; do not add it to the native app target.
 - The app target's `fileSystemSynchronizedGroups` should contain only the app source root, `HoldToTalk/`.
 - Root-level documentation files are not automatically synchronized. If you add files such as `AGENTS.md`, `CHANGELOG.md`, or `README.md`, add explicit `PBXFileReference` entries so they appear in Xcode.
 - Do not add loose PNG, ICNS, or dylib file references to the navigator just to make builds work.

@@ -15,6 +15,7 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ### Fixed
 
+- Added the existing SwiftPM test directory to Xcode's synchronized project navigator so test sources are visible and new test files appear automatically.
 - Isolated overlapping cloud recordings, propagated network failures and timeouts, and prevented late callbacks, cancelled sessions, and stale model downloads from overwriting newer work.
 - Waited for capture buffers to drain before finalizing audio and ensured session tasks, connections, and temporary recordings are cleaned up on errors and shutdown.
 - Protected model installation through staged validation, debounced each engine's credential edits independently, and prevented text insertion from falling through to an unrelated app when its target exits.
