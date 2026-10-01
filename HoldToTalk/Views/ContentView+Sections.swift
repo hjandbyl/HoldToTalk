@@ -14,7 +14,7 @@ extension ContentView {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
                         .frame(minWidth: 180, alignment: .leading)
-                        .materialSurface()
+                        .insetContentSurface()
 
                     Button(controller.isRecordingShortcut ? L10n.tr("Cancel") : L10n.tr("Change")) {
                         if controller.isRecordingShortcut {
@@ -55,7 +55,7 @@ extension ContentView {
                 }
             }
             .padding(16)
-            .liquidGlassSurface(interactive: true)
+            .contentSurface()
         }
     }
 
@@ -118,7 +118,7 @@ extension ContentView {
                 }
             }
             .padding(16)
-            .liquidGlassSurface(interactive: true)
+            .contentSurface()
         }
     }
 
@@ -151,7 +151,7 @@ extension ContentView {
                 }
             }
             .padding(16)
-            .liquidGlassSurface(interactive: true)
+            .contentSurface()
         }
     }
 
@@ -179,7 +179,7 @@ extension ContentView {
                 statusRow(title: L10n.tr("Version"), value: AppVersion.displayText)
             }
             .padding(16)
-            .liquidGlassSurface()
+            .contentSurface()
         }
     }
 
@@ -192,7 +192,7 @@ extension ContentView {
                 .padding(12)
         }
         .frame(minHeight: minHeight)
-        .liquidGlassSurface()
+        .contentSurface()
     }
 
     var permissionWarning: some View {
@@ -234,7 +234,7 @@ extension ContentView {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .liquidGlassSurface(tint: .orange, interactive: true)
+        .contentSurface()
     }
 
     var inputLevelMeter: some View {

@@ -58,6 +58,7 @@ struct HoldToTalkApp: App {
                     applyAppDisplayMode(appDisplayMode)
                 }
         }
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .appInfo) {}

@@ -184,7 +184,7 @@ extension ContentView {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .liquidGlassSurface(tint: tint, interactive: true)
+        .contentSurface()
     }
 
     func compactStatusRow(title: String, value: String, systemImage: String) -> some View {

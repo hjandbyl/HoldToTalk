@@ -88,7 +88,7 @@ extension ContentView {
             }
         }
         .padding(16)
-        .liquidGlassSurface(interactive: true)
+        .contentSurface()
     }
 
     func localSpeechModelRow(_ model: LocalSpeechModel) -> some View {
@@ -131,7 +131,7 @@ extension ContentView {
         .buttonStyle(.plain)
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .liquidGlassSurface(tint: isSelected ? .blue : nil, interactive: true)
+        .insetContentSurface(selected: isSelected)
     }
 
     @ViewBuilder
@@ -198,7 +198,7 @@ extension ContentView {
             statusRow(title: L10n.tr("Key Status"), value: controller.volcengineAPIKeyStatusText)
         }
         .padding(16)
-        .liquidGlassSurface(interactive: true)
+        .contentSurface()
     }
 
     var qwenASRPanel: some View {
@@ -224,7 +224,7 @@ extension ContentView {
             statusRow(title: L10n.tr("Key Status"), value: controller.qwenASRAPIKeyStatusText)
         }
         .padding(16)
-        .liquidGlassSurface(interactive: true)
+        .contentSurface()
     }
 
     func apiKeyInputField(engine: RecognitionEngine, text: Binding<String>) -> some View {
@@ -292,7 +292,7 @@ extension ContentView {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .liquidGlassSurface(tint: .blue, interactive: true)
+        .contentSurface()
     }
 
     func qwenASRAPIKeyNotice(showActions: Bool) -> some View {
@@ -333,7 +333,7 @@ extension ContentView {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .liquidGlassSurface(tint: .blue, interactive: true)
+        .contentSurface()
     }
 
     func localSpeechModelDownloadNotice(showActions: Bool) -> some View {
@@ -368,7 +368,7 @@ extension ContentView {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .liquidGlassSurface(tint: .blue, interactive: true)
+        .contentSurface()
     }
 
 }

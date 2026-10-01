@@ -2,7 +2,9 @@ import SwiftUI
 
 extension ContentView {
     var overviewSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 18) {
+            SectionHeader(title: L10n.tr("Overview"), systemImage: "rectangle.grid.2x2")
+
             overviewHeroPanel
 
             if controller.needsMicrophonePermission || controller.needsAccessibilityPermission {
@@ -26,13 +28,13 @@ extension ContentView {
         HStack(alignment: .center, spacing: 18) {
             ZStack {
                 Circle()
-                    .fill(statusColor.opacity(controller.isRecording ? 0.20 : 0.16))
+                    .fill(controller.isRecording ? Color.recordingAccent.opacity(0.14) : Color.accentColor.opacity(0.10))
 
                 Image(systemName: controller.headerSystemImage)
                     .font(.system(size: 32, weight: .semibold))
                     .foregroundStyle(controller.isRecording ? Color.recordingAccent : Color.accentColor)
             }
-            .frame(width: 64, height: 64)
+            .frame(width: 56, height: 56)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(overviewHeadline)
@@ -72,20 +74,14 @@ extension ContentView {
         }
         .padding(16)
         .frame(maxWidth: .infinity, minHeight: 112, alignment: .leading)
-        .liquidGlassSurface(interactive: true)
+        .contentSurface()
     }
 
     var overviewSetupPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: L10n.tr("Setup"), systemImage: "checklist")
 
-            if #available(macOS 26.0, *) {
-                GlassEffectContainer(spacing: 12) {
-                    overviewSetupCards
-                }
-            } else {
-                overviewSetupCards
-            }
+            overviewSetupCards
         }
     }
 
@@ -95,7 +91,7 @@ extension ContentView {
                 title: L10n.tr("Permissions"),
                 value: permissionsSummary,
                 systemImage: "lock.shield.fill",
-                tint: (controller.needsMicrophonePermission || controller.needsAccessibilityPermission) ? .orange : .green,
+                tint: (controller.needsMicrophonePermission || controller.needsAccessibilityPermission) ? .orange : .secondary,
                 actionTitle: L10n.tr("Review"),
                 destination: .permissions
             )
@@ -104,7 +100,7 @@ extension ContentView {
                 title: L10n.tr("Recognition"),
                 value: recognitionSummary,
                 systemImage: "waveform",
-                tint: .blue,
+                tint: .secondary,
                 actionTitle: L10n.tr("Configure"),
                 destination: .recognition
             )
@@ -113,22 +109,15 @@ extension ContentView {
                 title: L10n.tr("Shortcut"),
                 value: controller.holdShortcut.displayName,
                 systemImage: "keyboard.fill",
-                tint: .purple,
+                tint: .secondary,
                 actionTitle: L10n.tr("Change"),
                 destination: .shortcut
             )
         }
     }
 
-    @ViewBuilder
     var overviewActivityGrid: some View {
-        if #available(macOS 26.0, *) {
-            GlassEffectContainer(spacing: 14) {
-                overviewActivityCards
-            }
-        } else {
-            overviewActivityCards
-        }
+        overviewActivityCards
     }
 
     private var overviewActivityCards: some View {
@@ -162,14 +151,14 @@ extension ContentView {
                         .padding(12)
                 }
                 .frame(minHeight: 126, maxHeight: 160)
-                .materialSurface()
+                .insetContentSurface()
             }
             .padding(14)
             .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .liquidGlassSurface(interactive: true)
+        .contentSurface()
     }
 
     var overviewHealthCard: some View {
@@ -194,7 +183,7 @@ extension ContentView {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .liquidGlassSurface(interactive: true)
+        .contentSurface()
     }
 
 }

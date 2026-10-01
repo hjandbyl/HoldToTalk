@@ -46,16 +46,6 @@ struct ContentView: View {
         }
         .listStyle(.sidebar)
         .toolbar(removing: .sidebarToggle)
-        .toolbar {
-            // Keep the native window toolbar active so current macOS releases
-            // retain their floating sidebar chrome after removing its toggle.
-            ToolbarItem(placement: .navigation) {
-                Color.clear
-                    .frame(width: 1, height: 1)
-                    .accessibilityHidden(true)
-                    .allowsHitTesting(false)
-            }
-        }
         .navigationTitle("HoldToTalk")
         .background {
             NativeSidebarCollapseLock()
@@ -108,6 +98,7 @@ struct ContentView: View {
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .ignoresSafeArea(edges: .top)
         .navigationTitle((selectedSection ?? .overview).title)
     }
 }

@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+### Fixed
+
+- Removed the redundant window title bar and its stray separator while keeping window controls in the sidebar, and added an Overview heading in the page content to match the other sections.
+- Replaced tinted Liquid Glass content cards with neutral system materials, reserving glass for native navigation and the primary recording control.
+
 ## [0.2.3] - 2026-09-23
 
 ### Fixed
