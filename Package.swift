@@ -11,6 +11,11 @@ let package = Package(
         .executable(name: "HoldToTalk", targets: ["HoldToTalk"])
     ],
     targets: [
+        .testTarget(
+            name: "HoldToTalkTests",
+            dependencies: ["HoldToTalk"],
+            path: "Tests/HoldToTalkTests"
+        ),
         .executableTarget(
             name: "HoldToTalk",
             dependencies: ["CSherpaOnnx"],

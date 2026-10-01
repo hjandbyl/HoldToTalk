@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+### Engineering
+
+- Added a SwiftPM XCTest entry point with isolated transcript policy tests and a test script that resolves the existing sherpa runtime without launching the app.
+
 ### Fixed
 
 - Removed the redundant window title bar and its stray separator while keeping window controls in the sidebar, and added an Overview heading in the page content to match the other sections.
