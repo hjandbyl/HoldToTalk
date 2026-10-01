@@ -1,4 +1,5 @@
-import ApplicationServices
+// The SDK imports immutable AX option constants as mutable C globals.
+@preconcurrency import ApplicationServices
 import AVFoundation
 import AppKit
 import Foundation
@@ -31,7 +32,7 @@ enum PermissionHelper {
         AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     }
 
-    static func requestAccessibilityPermission() -> Bool {
+    @MainActor static func requestAccessibilityPermission() -> Bool {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         return AXIsProcessTrustedWithOptions(options)
     }

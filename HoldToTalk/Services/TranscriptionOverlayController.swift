@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 final class TranscriptionOverlayController {
-    private let controller: HoldToTalkController
+    private let recording: RecordingStore
     private var panel: NSPanel?
     private var presentation: TranscriptionOverlayPresentation?
     private var displayRevision = 0
@@ -16,8 +16,8 @@ final class TranscriptionOverlayController {
     private let orbSettleDelay: Duration = .milliseconds(30)
     private let dismissalDuration: Duration = .milliseconds(140)
 
-    init(controller: HoldToTalkController) {
-        self.controller = controller
+    init(recording: RecordingStore) {
+        self.recording = recording
     }
 
     func show() {
@@ -107,8 +107,8 @@ final class TranscriptionOverlayController {
     private func makePanel(presentation: TranscriptionOverlayPresentation) -> NSPanel {
         let hostingView = NSHostingView(
             rootView: TranscriptionOverlayView(
-                controller: controller,
-                liveTranscription: controller.liveTranscription,
+                recording: recording,
+                liveTranscription: recording.liveTranscription,
                 presentation: presentation
             )
             .frame(width: panelSize.width, height: panelSize.height)

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct TranscriptionOverlayView: View {
-    @ObservedObject var controller: HoldToTalkController
+    @ObservedObject var recording: RecordingStore
     @ObservedObject var liveTranscription: LiveTranscriptionState
     @ObservedObject var presentation: TranscriptionOverlayPresentation
     @Namespace private var glassNamespace
@@ -172,8 +172,8 @@ struct TranscriptionOverlayView: View {
 
     private var orbContentSurface: some View {
         RecordingWaveform(
-            visualization: controller.inputVisualization,
-            isRecording: controller.isRecording
+            visualization: recording.inputVisualization,
+            isRecording: recording.isRecording
         )
             .frame(width: compactWaveformWidth, height: 32)
             .opacity(showsWaveformInOrb ? 1 : 0)
@@ -188,8 +188,8 @@ struct TranscriptionOverlayView: View {
                 .frame(width: max(nucleusDiameter, bodyDiameter), height: max(nucleusDiameter, bodyDiameter))
 
             RecordingWaveform(
-                visualization: controller.inputVisualization,
-                isRecording: controller.isRecording
+                visualization: recording.inputVisualization,
+                isRecording: recording.isRecording
             )
                 .frame(width: compactWaveformWidth, height: 32)
                 .opacity(showsWaveformInOrb ? 1 : 0)
@@ -205,8 +205,8 @@ struct TranscriptionOverlayView: View {
     private var surfaceBody: some View {
         HStack(spacing: 14) {
             RecordingWaveform(
-                visualization: controller.inputVisualization,
-                isRecording: controller.isRecording
+                visualization: recording.inputVisualization,
+                isRecording: recording.isRecording
             )
                 .frame(width: waveformWidth, height: 32)
 

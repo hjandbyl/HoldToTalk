@@ -4,32 +4,48 @@ import CSherpaOnnx
 import Darwin
 import Foundation
 
-actor SherpaOnnxClient {
-    private var recognizers: [String: OfflineLocalSpeechRecognizer] = [:]
-
+actor SherpaOnnxClient: LocalRecognizing {
+    private let worker = LocalRecognizerWorker()
     func preload(model: LocalSpeechModel, language: String) async throws {
-        _ = try recognizer(language: language, model: model)
+        try await worker.perform { _ = try $0.recognizer(language: language, model: model) }
     }
-
     func transcribe(audioURL: URL, language: String, model: LocalSpeechModel) async throws -> String {
-        let audioFile = try AVAudioFile(forReading: audioURL)
-        guard audioFile.length > 0 else { return "" }
-
-        let recognizer = try recognizer(language: language, model: model)
-        return try recognizer.transcribe(audioFile: audioFile)
+        try await worker.perform { worker in
+            let audioFile = try AVAudioFile(forReading: audioURL)
+            guard audioFile.length > 0 else { return "" }
+            return try worker.recognizer(language: language, model: model).transcribe(audioFile: audioFile)
+        }
     }
+    func clearCache() async { _ = try? await worker.perform { $0.recognizers.removeAll() } }
+}
 
-    func clearCache() {
-        recognizers.removeAll(keepingCapacity: true)
+private final class LocalRecognizerWorker: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "HoldToTalk.localRecognition", qos: .userInitiated)
+    var recognizers: [String: OfflineLocalSpeechRecognizer] = [:]
+    func perform<T: Sendable>(_ operation: @escaping @Sendable (LocalRecognizerWorker) throws -> T) async throws -> T {
+        let cancellation = WorkCancellation()
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation { continuation in
+                queue.async {
+                    continuation.resume(with: Result {
+                        try cancellation.check()
+                        let result = try operation(self)
+                        try cancellation.check()
+                        return result
+                    })
+                }
+            }
+        } onCancel: { cancellation.cancel() }
     }
-
-    private func recognizer(language: String, model: LocalSpeechModel) throws -> OfflineLocalSpeechRecognizer {
+    func recognizer(language: String, model: LocalSpeechModel) throws -> OfflineLocalSpeechRecognizer {
         let normalizedLanguage = normalizeLanguage(language)
         let cacheKey = "\(model.id):\(normalizedLanguage)"
         if let recognizer = recognizers[cacheKey] {
             return recognizer
         }
 
+        recognizers.removeAll()
         let modelDirectory = try modelDirectory(for: model)
         let recognizer = try OfflineLocalSpeechRecognizer(
             model: model,

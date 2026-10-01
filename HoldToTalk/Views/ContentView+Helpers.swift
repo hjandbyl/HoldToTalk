@@ -1,87 +1,87 @@
 import SwiftUI
 
-extension ContentView {
+extension MainSectionContent {
     var statusColor: Color {
-        if controller.isRecording {
+        if environment.recording.isRecording {
             return .recordingAccent
         }
-        if controller.isTranscribing {
+        if environment.recording.isTranscribing {
             return .blue
         }
-        return controller.isEnabled ? .green : .secondary
+        return environment.settings.isEnabled ? .green : .secondary
     }
 
     var overviewHeadline: String {
-        if controller.isRecording {
+        if environment.recording.isRecording {
             return L10n.tr("Listening now")
         }
-        if controller.isTranscribing {
+        if environment.recording.isTranscribing {
             return L10n.tr("Finishing transcription")
         }
-        if controller.needsMicrophonePermission || controller.needsAccessibilityPermission {
+        if environment.devices.needsMicrophonePermission || environment.devices.needsAccessibilityPermission {
             return L10n.tr("Complete setup to start")
         }
-        return controller.isEnabled ? L10n.tr("Ready for hold-to-talk") : L10n.tr("Listening is paused")
+        return environment.settings.isEnabled ? L10n.tr("Ready for hold-to-talk") : L10n.tr("Listening is paused")
     }
 
     var permissionsSummary: String {
-        if controller.needsMicrophonePermission && controller.needsAccessibilityPermission {
+        if environment.devices.needsMicrophonePermission && environment.devices.needsAccessibilityPermission {
             return L10n.tr("Microphone and Accessibility needed")
         }
-        if controller.needsMicrophonePermission {
+        if environment.devices.needsMicrophonePermission {
             return L10n.tr("Microphone needed")
         }
-        if controller.needsAccessibilityPermission {
+        if environment.devices.needsAccessibilityPermission {
             return L10n.tr("Accessibility needed")
         }
         return L10n.tr("All permissions granted")
     }
 
     var recognitionSummary: String {
-        if controller.isUsingLocalFallbackForMissingAPIKey {
-            return L10n.tr("%@ selected, using local until API key is added", controller.preferredRecognitionEngine.title)
+        if environment.isUsingLocalFallbackForMissingAPIKey {
+            return L10n.tr("%@ selected, using local until API key is added", environment.settings.preferredRecognitionEngine.title)
         }
 
-        if controller.preferredRecognitionEngine == .sherpaOnnx {
-            return "\(controller.preferredRecognitionEngine.title) · \(controller.selectedLocalSpeechModel.displayTitle) · \(controller.language.title)"
+        if environment.settings.preferredRecognitionEngine == .sherpaOnnx {
+            return "\(environment.settings.preferredRecognitionEngine.title) · \(environment.settings.selectedLocalSpeechModel.displayTitle) · \(environment.settings.language.title)"
         }
 
-        return "\(controller.preferredRecognitionEngine.title) · \(controller.language.title)"
+        return "\(environment.settings.preferredRecognitionEngine.title) · \(environment.settings.language.title)"
     }
 
     var needsLocalSpeechModelDownloadNotice: Bool {
-        controller.preferredRecognitionEngine == .sherpaOnnx && !controller.isSelectedLocalSpeechModelInstalled
+        environment.settings.preferredRecognitionEngine == .sherpaOnnx && !environment.models.isSelectedLocalSpeechModelInstalled
     }
 
     var languageSelection: Binding<TranscriptionLanguage> {
         Binding {
-            controller.language
+            environment.settings.language
         } set: { language in
-            controller.setLanguage(language)
+            environment.settings.setLanguage(language)
         }
     }
 
     var recognitionEngineSelection: Binding<RecognitionEngine> {
         Binding {
-            controller.preferredRecognitionEngine
+            environment.settings.preferredRecognitionEngine
         } set: { engine in
-            controller.setPreferredRecognitionEngine(engine)
+            environment.settings.setPreferredRecognitionEngine(engine)
         }
     }
 
     var localSpeechModelSelection: Binding<LocalSpeechModel> {
         Binding {
-            controller.selectedLocalSpeechModel
+            environment.settings.selectedLocalSpeechModel
         } set: { model in
-            controller.setLocalSpeechModel(model)
+            environment.settings.setLocalSpeechModel(model)
         }
     }
 
     var inputDeviceSelection: Binding<String> {
         Binding {
-            controller.selectedInputDeviceUID
+            environment.devices.selectedInputDeviceUID
         } set: { uid in
-            controller.setInputDeviceUID(uid)
+            environment.devices.setInputDeviceUID(uid)
         }
     }
 
@@ -110,22 +110,6 @@ extension ContentView {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .font(.callout)
-    }
-
-    func scheduleAPIKeyAutosave(for engine: RecognitionEngine) {
-        apiKeyAutosaveTask?.cancel()
-        apiKeyAutosaveTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 450_000_000)
-            guard !Task.isCancelled else { return }
-            switch engine {
-            case .volcengine:
-                controller.syncVolcengineAPIKeyDraft()
-            case .qwenASR:
-                controller.syncQwenASRAPIKeyDraft()
-            case .sherpaOnnx:
-                return
-            }
-        }
     }
 
     func revealAPIKey(for engine: RecognitionEngine) {

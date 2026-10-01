@@ -1,13 +1,13 @@
 import SwiftUI
 
-extension ContentView {
+extension MainSectionContent {
     var shortcutSection: some View {
         VStack(alignment: .leading, spacing: 18) {
             SectionHeader(title: L10n.tr("Shortcut"), systemImage: "keyboard")
 
             VStack(alignment: .leading, spacing: 14) {
                 labeledControlRow(L10n.tr("Shortcut")) {
-                    Text(controller.isRecordingShortcut ? L10n.tr("Press shortcut...") : controller.holdShortcut.displayName)
+                    Text(environment.settings.isRecordingShortcut ? L10n.tr("Press shortcut...") : environment.settings.holdShortcut.displayName)
                         .font(.callout.monospaced())
                         .textSelection(.enabled)
                         .lineLimit(1)
@@ -16,41 +16,41 @@ extension ContentView {
                         .frame(minWidth: 180, alignment: .leading)
                         .insetContentSurface()
 
-                    Button(controller.isRecordingShortcut ? L10n.tr("Cancel") : L10n.tr("Change")) {
-                        if controller.isRecordingShortcut {
-                            controller.cancelShortcutRecording()
+                    Button(environment.settings.isRecordingShortcut ? L10n.tr("Cancel") : L10n.tr("Change")) {
+                        if environment.settings.isRecordingShortcut {
+                            environment.settings.cancelShortcutRecording()
                         } else {
-                            controller.beginShortcutRecording()
+                            environment.settings.beginShortcutRecording()
                         }
                     }
 
                     Button(L10n.tr("Reset")) {
-                        controller.resetHoldShortcut()
+                        environment.settings.resetHoldShortcut()
                     }
                 }
 
                 labeledControlRow(L10n.tr("Listening")) {
-                    Toggle(L10n.tr("Listening for shortcut"), isOn: $controller.isEnabled)
+                    Toggle(L10n.tr("Listening for shortcut"), isOn: Binding(get: { environment.settings.isEnabled }, set: { environment.settings.isEnabled = $0 }))
                         .labelsHidden()
                         .toggleStyle(.switch)
-                        .onChange(of: controller.isEnabled) { _, newValue in
-                            controller.setListeningEnabled(newValue)
+                        .onChange(of: environment.settings.isEnabled) { _, newValue in
+                            environment.setListeningEnabled(newValue)
                         }
                 }
 
                 labeledControlRow(L10n.tr("Insertion")) {
-                    Toggle(L10n.tr("Paste recognized text automatically"), isOn: $controller.autoPaste)
+                    Toggle(L10n.tr("Paste recognized text automatically"), isOn: Binding(get: { environment.settings.autoPaste }, set: { environment.settings.autoPaste = $0 }))
                         .labelsHidden()
                         .toggleStyle(.switch)
                 }
 
                 labeledControlRow(L10n.tr("Manual Test")) {
                     ProminentGlassButton(
-                        title: controller.isRecording ? L10n.tr("Stop Test") : L10n.tr("Test Rec"),
-                        systemImage: controller.isRecording ? "stop.fill" : "record.circle",
-                        tint: controller.isRecording ? .recordingAccent : nil
+                        title: environment.recording.isRecording ? L10n.tr("Stop Test") : L10n.tr("Test Rec"),
+                        systemImage: environment.recording.isRecording ? "stop.fill" : "record.circle",
+                        tint: environment.recording.isRecording ? .recordingAccent : nil
                     ) {
-                        controller.toggleManualRecording()
+                        environment.toggleManualRecording()
                     }
                 }
             }
@@ -90,30 +90,30 @@ extension ContentView {
                     HStack(spacing: 8) {
                         Picker(L10n.tr("Microphone"), selection: inputDeviceSelection) {
                             Text(L10n.tr("Auto (%@)", AudioDeviceInspector.defaultInputDeviceName())).tag("")
-                            if controller.isSelectedInputDeviceUnavailable {
-                                Text(controller.unavailableSelectedInputDeviceTitle)
-                                    .tag(controller.selectedInputDeviceUID)
+                            if environment.devices.isSelectedInputDeviceUnavailable {
+                                Text(environment.devices.unavailableSelectedInputDeviceTitle)
+                                    .tag(environment.devices.selectedInputDeviceUID)
                             }
-                            ForEach(controller.availableInputDevices) { device in
+                            ForEach(environment.devices.availableInputDevices) { device in
                                 Text(device.name).tag(device.id)
                             }
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
                         .frame(maxWidth: 260, alignment: .leading)
-                        .disabled(controller.isRecording)
+                        .disabled(environment.recording.isRecording)
 
                         Button {
-                            controller.refreshInputDeviceState()
+                            environment.devices.refreshInputDeviceState()
                         } label: {
                             Label(L10n.tr("Refresh"), systemImage: "arrow.clockwise")
                         }
-                        .disabled(controller.isRecording)
+                        .disabled(environment.recording.isRecording)
                     }
                 }
 
                 labeledControlRow(L10n.tr("Punctuation")) {
-                    Toggle(L10n.tr("Remove trailing period"), isOn: $controller.removesTrailingSentencePeriod)
+                    Toggle(L10n.tr("Remove trailing period"), isOn: Binding(get: { environment.settings.removesTrailingSentencePeriod }, set: { environment.settings.removesTrailingSentencePeriod = $0 }))
                         .toggleStyle(.switch)
                 }
             }
@@ -126,23 +126,23 @@ extension ContentView {
         VStack(alignment: .leading, spacing: 18) {
             SectionHeader(title: L10n.tr("Permissions"), systemImage: "lock.shield.fill")
 
-            if controller.needsMicrophonePermission || controller.needsAccessibilityPermission {
+            if environment.devices.needsMicrophonePermission || environment.devices.needsAccessibilityPermission {
                 permissionWarning
             }
 
             VStack(alignment: .leading, spacing: 14) {
-                statusRow(title: L10n.tr("Microphone"), value: controller.microphoneStatusText)
-                statusRow(title: L10n.tr("Accessibility"), value: controller.accessibilityStatusText)
+                statusRow(title: L10n.tr("Microphone"), value: environment.devices.microphoneStatusText)
+                statusRow(title: L10n.tr("Accessibility"), value: environment.devices.accessibilityStatusText)
 
                 HStack(spacing: 10) {
                     Button {
-                        controller.requestMicrophonePermission()
+                        environment.devices.requestMicrophonePermission()
                     } label: {
                         Label(L10n.tr("Request Microphone"), systemImage: "mic.fill")
                     }
 
                     Button {
-                        controller.requestAccessibilityPermission()
+                        environment.devices.requestAccessibilityPermission()
                     } label: {
                         Label(L10n.tr("Request Accessibility"), systemImage: "hand.raised.fill")
                     }
@@ -167,16 +167,24 @@ extension ContentView {
             SectionHeader(title: L10n.tr("Diagnostics"), systemImage: "stethoscope")
 
             VStack(alignment: .leading, spacing: 12) {
-                statusRow(title: L10n.tr("Status"), value: controller.statusMessage)
-                statusRow(title: L10n.tr("Microphone"), value: controller.microphoneStatusText)
-                statusRow(title: L10n.tr("Input Device"), value: controller.inputDeviceText)
-                statusRow(title: L10n.tr("Target App"), value: controller.targetAppText)
-                statusRow(title: L10n.tr("Shortcut Event"), value: controller.shortcutEventText)
-                statusRow(title: L10n.tr("Last Recording"), value: controller.lastRecordingInfo)
-                statusRow(title: L10n.tr("Accessibility"), value: controller.accessibilityStatusText)
-                statusRow(title: L10n.tr("Doubao Key"), value: controller.volcengineAPIKeyStatusText)
-                statusRow(title: L10n.tr("Qwen Key"), value: controller.qwenASRAPIKeyStatusText)
+                statusRow(title: L10n.tr("Status"), value: environment.recording.statusMessage)
+                statusRow(title: L10n.tr("Microphone"), value: environment.devices.microphoneStatusText)
+                statusRow(title: L10n.tr("Input Device"), value: environment.devices.inputDeviceText)
+                statusRow(title: L10n.tr("Target App"), value: environment.diagnostics.targetAppText)
+                statusRow(title: L10n.tr("Shortcut Event"), value: environment.diagnostics.shortcutEventText)
+                statusRow(title: L10n.tr("Last Recording"), value: environment.diagnostics.lastRecordingInfo)
+                statusRow(title: L10n.tr("Accessibility"), value: environment.devices.accessibilityStatusText)
+                statusRow(title: L10n.tr("Doubao Key"), value: environment.credentials.volcengineAPIKeyStatusText)
+                statusRow(title: L10n.tr("Qwen Key"), value: environment.credentials.qwenASRAPIKeyStatusText)
                 statusRow(title: L10n.tr("Version"), value: AppVersion.displayText)
+                statusRow(title: L10n.tr("Pending Recordings"), value: String(environment.recording.pendingCount))
+                if let metric = environment.diagnostics.metrics.last {
+                    statusRow(title: L10n.tr("Last Timing"), value: metric.formattedTimings)
+                }
+                Toggle(L10n.tr("Retain diagnostic audio"), isOn: Binding(
+                    get: { environment.diagnostics.retainDiagnosticAudio },
+                    set: { environment.diagnostics.retainDiagnosticAudio = $0 }))
+                    .help(L10n.tr("Keep the last successful recording locally for troubleshooting."))
             }
             .padding(16)
             .contentSurface()
@@ -185,10 +193,10 @@ extension ContentView {
 
     func transcriptPanel(minHeight: CGFloat) -> some View {
         ScrollView {
-            Text(controller.lastTranscript.isEmpty ? L10n.tr("No transcript yet.") : controller.lastTranscript)
+            Text(environment.recording.lastTranscript.isEmpty ? L10n.tr("No transcript yet.") : environment.recording.lastTranscript)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
-                .foregroundStyle(controller.lastTranscript.isEmpty ? .secondary : .primary)
+                .foregroundStyle(environment.recording.lastTranscript.isEmpty ? .secondary : .primary)
                 .padding(12)
         }
         .frame(minHeight: minHeight)
@@ -214,17 +222,17 @@ extension ContentView {
             }
 
             HStack(spacing: 10) {
-                if controller.needsMicrophonePermission {
+                if environment.devices.needsMicrophonePermission {
                     Button {
-                        controller.openMicrophoneSettings()
+                        environment.devices.openMicrophoneSettings()
                     } label: {
                         Label(L10n.tr("Open Microphone Settings"), systemImage: "mic.fill")
                     }
                 }
 
-                if controller.needsAccessibilityPermission {
+                if environment.devices.needsAccessibilityPermission {
                     Button {
-                        controller.openAccessibilitySettings()
+                        environment.devices.openAccessibilitySettings()
                     } label: {
                         Label(L10n.tr("Open Accessibility Settings"), systemImage: "hand.raised.fill")
                     }
@@ -239,8 +247,8 @@ extension ContentView {
 
     var inputLevelMeter: some View {
         AudioInputLevelMeter(
-            visualization: controller.inputVisualization,
-            isRecording: controller.isRecording
+            visualization: environment.recording.inputVisualization,
+            isRecording: environment.recording.isRecording
         )
         .accessibilityLabel(L10n.tr("Input level"))
     }

@@ -44,7 +44,7 @@ enum AppDisplayModePreference {
 
     private static let legacyShowsDockIconStorageKey = "HoldToTalk.showsDockIcon"
 
-    static func applySavedPreference() {
+    @MainActor static func applySavedPreference() {
         apply(mode: savedMode())
     }
 
@@ -61,7 +61,7 @@ enum AppDisplayModePreference {
         return defaultMode
     }
 
-    static func apply(mode: AppDisplayMode) {
+    @MainActor static func apply(mode: AppDisplayMode) {
         NSApp.setActivationPolicy(mode.showsDockIcon ? .regular : .accessory)
     }
 }

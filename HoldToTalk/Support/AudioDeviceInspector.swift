@@ -50,7 +50,9 @@ final class AudioInputDeviceMonitor {
         }
     }
 
-    deinit {
+    deinit { stop() }
+
+    func stop() {
         for registration in registrations {
             var address = registration.address
             AudioObjectRemovePropertyListenerBlock(
@@ -60,6 +62,7 @@ final class AudioInputDeviceMonitor {
                 registration.listener
             )
         }
+        registrations.removeAll()
     }
 }
 

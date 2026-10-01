@@ -34,6 +34,23 @@ enum L10n {
     ]
 
     private static let simplifiedChinese: [String: String] = [
+        "Too many pending recordings. Try again shortly.": "待处理录音过多，请稍后重试。",
+        "Audio processing could not keep up. Recording stopped.": "音频处理积压，已停止录音。",
+        "Recognition timed out. Please try again.": "识别超时，请重试。",
+        "Recognition ended without a confirmed final result.": "识别结束，但未收到完整结果。",
+        "Audio capture failed. Please check the microphone.": "音频采集失败，请检查麦克风。",
+        "The original target app is no longer available.": "原目标应用已不可用。",
+        "Could not send text to the target app.": "无法向目标应用发送文字。",
+        "Text input sent to the target app.": "已向目标应用发送文字输入。",
+        "Recording canceled.": "已取消录音。",
+        "The selected model is being deleted.": "正在删除所选模型。",
+        "Retain diagnostic audio": "保留诊断录音",
+        "Keep the last successful recording locally for troubleshooting.": "在本机保留最近一段成功录音，用于排查问题。",
+        "Pending Recordings": "待处理录音",
+        "Last Timing": "最近耗时",
+        "First frame %@, result %@, insertion %@": "首帧 %@，结果 %@，输入 %@",
+        "Not measured": "未测量",
+        "%.0f ms": "%.0f 毫秒",
         "System": "系统",
         "Follow System Language": "跟随系统语言",
         "English": "English",

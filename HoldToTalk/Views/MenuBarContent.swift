@@ -2,7 +2,16 @@ import AppKit
 import SwiftUI
 
 struct MenuBarContent: View {
-    @ObservedObject var controller: HoldToTalkController
+    let environment: AppEnvironment
+    @ObservedObject private var recording: RecordingStore
+    @ObservedObject private var settings: SettingsStore
+    @ObservedObject private var devices: DevicePermissionStore
+    init(environment: AppEnvironment) {
+        self.environment = environment
+        recording = environment.recording
+        settings = environment.settings
+        devices = environment.devices
+    }
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -18,17 +27,17 @@ struct MenuBarContent: View {
 
             Divider()
 
-            Text(controller.statusMessage)
+            Text(environment.recording.statusMessage)
                 .lineLimit(1)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             Button {
-                controller.setListeningEnabled(!controller.isEnabled)
+                environment.setListeningEnabled(!environment.settings.isEnabled)
             } label: {
                 Label(
-                    controller.isEnabled ? L10n.tr("Pause Listening") : L10n.tr("Resume Listening"),
-                    systemImage: controller.isEnabled ? "pause.fill" : "play.fill"
+                    environment.settings.isEnabled ? L10n.tr("Pause Listening") : L10n.tr("Resume Listening"),
+                    systemImage: environment.settings.isEnabled ? "pause.fill" : "play.fill"
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -40,21 +49,21 @@ struct MenuBarContent: View {
                     uid: ""
                 )
 
-                if controller.isSelectedInputDeviceUnavailable {
+                if environment.devices.isSelectedInputDeviceUnavailable {
                     inputDeviceMenuItem(
-                        title: controller.unavailableSelectedInputDeviceTitle,
-                        uid: controller.selectedInputDeviceUID
+                        title: environment.devices.unavailableSelectedInputDeviceTitle,
+                        uid: environment.devices.selectedInputDeviceUID
                     )
                 }
 
-                ForEach(controller.availableInputDevices) { device in
+                ForEach(environment.devices.availableInputDevices) { device in
                     inputDeviceMenuItem(title: device.name, uid: device.id)
                 }
 
                 Divider()
 
                 Button(L10n.tr("Refresh")) {
-                    controller.refreshInputDeviceState()
+                    environment.devices.refreshInputDeviceState()
                 }
             } label: {
                 HStack(spacing: 8) {
@@ -69,7 +78,7 @@ struct MenuBarContent: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .menuStyle(.button)
-            .disabled(controller.isRecording)
+            .disabled(environment.recording.isRecording)
 
             Divider()
 
@@ -90,20 +99,20 @@ struct MenuBarContent: View {
         .padding(12)
         .frame(width: 300)
         .onAppear {
-            controller.refreshInputDeviceState()
+            environment.devices.refreshInputDeviceState()
         }
     }
 
     private var microphoneMenuTitle: String {
-        shortMenuTitle(L10n.tr("Microphone: %@", controller.inputDeviceText))
+        shortMenuTitle(L10n.tr("Microphone: %@", environment.devices.inputDeviceText))
     }
 
     @ViewBuilder
     private func inputDeviceMenuItem(title: String, uid: String) -> some View {
         Button {
-            controller.setInputDeviceUID(uid)
+            environment.devices.setInputDeviceUID(uid)
         } label: {
-            if controller.selectedInputDeviceUID == uid {
+            if environment.devices.selectedInputDeviceUID == uid {
                 Label(shortMenuTitle(title), systemImage: "checkmark")
             } else {
                 Text(shortMenuTitle(title))

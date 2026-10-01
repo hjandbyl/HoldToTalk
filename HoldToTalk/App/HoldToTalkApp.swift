@@ -4,7 +4,7 @@ import SwiftUI
 @main
 struct HoldToTalkApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var controller: HoldToTalkController = .shared
+    private var environment: AppEnvironment { appDelegate.environment }
     @State private var localeRefreshToken = UUID()
     @AppStorage(AppLanguage.storageKey) private var appLanguageID = AppLanguage.system.rawValue
     @AppStorage(AppDisplayModePreference.storageKey) private var appDisplayModeID = AppDisplayModePreference.savedMode().rawValue
@@ -33,26 +33,26 @@ struct HoldToTalkApp: App {
 
     private var menuBarScene: some Scene {
         MenuBarExtra(isInserted: statusItemIsInserted) {
-            MenuBarContent(controller: controller)
+            MenuBarContent(environment: environment)
                 .environment(\.locale, appLanguage.locale)
         } label: {
-            MenuBarStatusIcon(assetName: controller.menuBarIconAssetName)
+            MenuBarStatusIcon(recording: environment.recording)
         }
         .menuBarExtraStyle(.window)
     }
 
     private var mainWindowScene: some Scene {
         Window("HoldToTalk", id: "main") {
-            ContentView(controller: controller)
+            ContentView(environment: environment)
                 .frame(minWidth: 880, minHeight: 660)
                 .environment(\.locale, appLanguage.locale)
                 .onChange(of: appLanguageID) { _, _ in
-                    controller.appLanguageDidChange()
+                    environment.appLanguageDidChange()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
                     guard appLanguage == .system else { return }
                     localeRefreshToken = UUID()
-                    controller.appLanguageDidChange()
+                    environment.appLanguageDidChange()
                 }
                 .onChange(of: appDisplayModeID) { _, _ in
                     applyAppDisplayMode(appDisplayMode)
@@ -67,10 +67,10 @@ struct HoldToTalkApp: App {
 }
 
 private struct MenuBarStatusIcon: View {
-    let assetName: String
+    @ObservedObject var recording: RecordingStore
 
     var body: some View {
-        Image(assetName)
+        Image(recording.menuBarIconAssetName)
             .renderingMode(.template)
             .resizable()
             .scaledToFit()
@@ -79,18 +79,28 @@ private struct MenuBarStatusIcon: View {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    let environment = AppEnvironment()
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyAppDisplayMode(AppDisplayModePreference.savedMode())
         Task { @MainActor in
-            await HoldToTalkController.shared.start()
+            environment.start()
         }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
         Task { @MainActor in
-            HoldToTalkController.shared.applicationDidBecomeActive()
+            environment.applicationDidBecomeActive()
         }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Task {
+            await environment.shutdown()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

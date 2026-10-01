@@ -1,4 +1,5 @@
 module CSherpaOnnx {
     header "include/sherpa-onnx/c-api/c-api.h"
+    header "include/AudioQueueState.h"
     export *
 }

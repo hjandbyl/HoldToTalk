@@ -6,14 +6,26 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
-### Engineering
+### Changed
 
-- Added a SwiftPM XCTest entry point with isolated transcript policy tests and a test script that resolves the existing sherpa runtime without launching the app.
+- Replaced the shared controller with an application composition root, feature stores, and independently owned dictation sessions with capture-order text insertion and configuration snapshots.
+- Moved recording file writes and conversion behind a preallocated two-second PCM pool, bounded cloud buffers to ten seconds, and replaced per-chunk main-actor tasks with a single network sender per session.
+- Limited local recognition to one serial worker and one cached model/language combination, and added per-session timing and resource diagnostics.
+- Made diagnostic recording retention opt-in, and added a content-free performance sampler with per-engine P50/P95 and regression comparisons.
 
 ### Fixed
 
+- Isolated overlapping cloud recordings, propagated network failures and timeouts, and prevented late callbacks, cancelled sessions, and stale model downloads from overwriting newer work.
+- Waited for capture buffers to drain before finalizing audio and ensured session tasks, connections, and temporary recordings are cleaned up on errors and shutdown.
+- Protected model installation through staged validation, debounced each engine's credential edits independently, and prevented text insertion from falling through to an unrelated app when its target exits.
+- Ended recording immediately on cloud receive errors, retired failed idle connections, reported missing startup permissions, and restored temporary pasteboard contents before cancelled insertion exits.
 - Removed the redundant window title bar and its stray separator while keeping window controls in the sidebar, and added an Overview heading in the page content to match the other sections.
 - Replaced tinted Liquid Glass content cards with neutral system materials, reserving glass for native navigation and the primary recording control.
+
+### Engineering
+
+- Added a SwiftPM XCTest entry point with isolated transcript policy tests and a test script that resolves the existing sherpa runtime without launching the app.
+- Expanded regression coverage to session ordering, cancellation, buffering, network failures/timeouts, model installation, credential debouncing, and clipboard protection, with complete strict-concurrency checking and Thread Sanitizer coverage for the concurrent audio primitives.
 
 ## [0.2.3] - 2026-09-23
 

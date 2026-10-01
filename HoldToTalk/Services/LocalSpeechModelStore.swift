@@ -6,7 +6,7 @@ enum LocalSpeechModelStore {
     }
 
     static func isInstalled(_ model: LocalSpeechModel) -> Bool {
-        isUserInstalled(model)
+        installedDirectory(for: model) != nil
     }
 
     static func isUserInstalled(_ model: LocalSpeechModel) -> Bool {
@@ -41,13 +41,16 @@ enum LocalSpeechModelStore {
         try FileManager.default.moveItem(at: downloadedArchive, to: temporaryArchive)
         defer { try? FileManager.default.removeItem(at: temporaryArchive) }
 
-        try? FileManager.default.removeItem(at: destination)
-        try extractArchive(temporaryArchive, into: baseDirectory)
+        let staging = baseDirectory.appendingPathComponent(".install-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: staging) }
+        try Task.checkCancellation()
+        try await ArchiveExtraction.extract(temporaryArchive, into: staging)
+        try Task.checkCancellation()
+        let extracted = staging.appendingPathComponent(model.directoryName, isDirectory: true)
+        try ModelInstallation.publish(extracted: extracted, destination: destination,
+            requiredFiles: model.requiredFiles, modelName: model.displayTitle)
         await progressHandler?(1)
-
-        guard hasRequiredFiles(for: model, in: destination) else {
-            throw LocalSpeechModelStoreError.extractedModelMissingFiles(model.displayTitle)
-        }
     }
 
     static func userModelsBaseDirectory() throws -> URL {
@@ -100,100 +103,76 @@ enum LocalSpeechModelStore {
         }
     }
 
-    private static func extractArchive(_ archive: URL, into directory: URL) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-        process.arguments = ["-xjf", archive.path, "-C", directory.path]
 
-        let errorPipe = Pipe()
-        process.standardError = errorPipe
-        try process.run()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
-            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorText = String(data: errorData, encoding: .utf8) ?? ""
-            throw LocalSpeechModelStoreError.extractFailed(errorText.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-    }
 }
 
 private final class DownloadOperation: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let lock = NSLock()
     private let progressHandler: (@Sendable (Double) async -> Void)?
-    private var continuation: CheckedContinuation<URL, Error>?
+    private let result = AsyncResult<URL>()
     private var session: URLSession?
-    private var lastProgressUpdateTime: TimeInterval = 0
+    private var cancelled = false
+    private var downloadedURL: URL?
+    private var lastProgressUpdateTime: TimeInterval = 0 // serial URLSession delegate queue
 
-    init(progressHandler: (@Sendable (Double) async -> Void)?) {
-        self.progressHandler = progressHandler
+    init(progressHandler: (@Sendable (Double) async -> Void)?) { self.progressHandler = progressHandler }
+    static func download(from url: URL, progressHandler: (@Sendable (Double) async -> Void)?) async throws -> URL {
+        try await DownloadOperation(progressHandler: progressHandler).start(url: url)
     }
-
-    static func download(
-        from url: URL,
-        progressHandler: (@Sendable (Double) async -> Void)?
-    ) async throws -> URL {
-        let operation = DownloadOperation(progressHandler: progressHandler)
-        return try await operation.start(url: url)
-    }
-
     private func start(url: URL) async throws -> URL {
         try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                self.continuation = continuation
-                let configuration = URLSessionConfiguration.default
-                let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+            try Task.checkCancellation()
+            let task = try lock.withLock { () throws -> URLSessionDownloadTask in
+                if cancelled { throw CancellationError() }
+                let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
                 self.session = session
-                session.downloadTask(with: url).resume()
+                return session.downloadTask(with: url)
             }
-        } onCancel: {
-            self.session?.invalidateAndCancel()
-        }
+            task.resume()
+            return try await result.value()
+        } onCancel: { self.cancel() }
     }
-
-    func urlSession(
-        _ session: URLSession,
-        downloadTask: URLSessionDownloadTask,
-        didWriteData bytesWritten: Int64,
-        totalBytesWritten: Int64,
-        totalBytesExpectedToWrite: Int64
-    ) {
+    private func cancel() {
+        let session = lock.withLock { () -> URLSession? in
+            cancelled = true
+            let session = self.session
+            self.session = nil
+            if let downloadedURL { try? FileManager.default.removeItem(at: downloadedURL) }
+            downloadedURL = nil
+            return session
+        }
+        result.resolve(.failure(CancellationError()))
+        session?.invalidateAndCancel()
+    }
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
+                    totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         guard totalBytesExpectedToWrite > 0 else { return }
         let progress = min(1, max(0, Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)))
         let now = ProcessInfo.processInfo.systemUptime
         guard progress >= 1 || now - lastProgressUpdateTime >= 0.25 else { return }
         lastProgressUpdateTime = now
-        Task {
-            await progressHandler?(progress)
-        }
+        Task { await progressHandler?(progress) }
     }
-
-    func urlSession(
-        _ session: URLSession,
-        downloadTask: URLSessionDownloadTask,
-        didFinishDownloadingTo location: URL
-    ) {
-        let temporaryURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("HoldToTalk-download-\(UUID().uuidString).tar.bz2")
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        let temporaryURL = FileManager.default.temporaryDirectory.appendingPathComponent("HoldToTalk-download-\(UUID().uuidString).tar.bz2")
         do {
-            try FileManager.default.moveItem(at: location, to: temporaryURL)
-            continuation?.resume(returning: temporaryURL)
-            continuation = nil
-        } catch {
-            continuation?.resume(throwing: error)
-            continuation = nil
-        }
-        session.invalidateAndCancel()
+            try lock.withLock {
+                guard !cancelled else { throw CancellationError() }
+                guard let response = downloadTask.response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
+                    throw URLError(.badServerResponse)
+                }
+                try FileManager.default.moveItem(at: location, to: temporaryURL)
+                downloadedURL = temporaryURL
+                if !result.resolve(.success(temporaryURL)) { try? FileManager.default.removeItem(at: temporaryURL) }
+            }
+        } catch { result.resolve(.failure(error)) }
+        lock.withLock { self.session = nil }
+        session.finishTasksAndInvalidate()
     }
-
-    func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        didCompleteWithError error: Error?
-    ) {
-        guard let error, continuation != nil else { return }
-        continuation?.resume(throwing: error)
-        continuation = nil
-        session.invalidateAndCancel()
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error { result.resolve(.failure(error)) }
+        lock.withLock { self.session = nil }
+        session.finishTasksAndInvalidate()
     }
 }
 

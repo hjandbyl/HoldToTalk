@@ -181,6 +181,8 @@ final class AudioUnitInputCapture: @unchecked Sendable {
         AudioComponentInstanceDispose(audioUnit)
     }
 
+    var format: AVAudioFormat { buffer.format }
+
     func start() throws {
         let status = AudioOutputUnitStart(audioUnit)
         guard status == noErr else {

@@ -66,14 +66,15 @@ xcodebuild -quiet -project HoldToTalk.xcodeproj -scheme HoldToTalk -configuratio
 
 ## Testing
 
-No XCTest target is currently defined in `Package.swift`. When changing behavior, use focused compilation checks and, for app workflows, `./script/build_and_run.sh --verify` when practical.
+Run the SwiftPM XCTest target with `./script/test.sh`; it supplies the sherpa runtime rpath without launching the app. Tests use injected services and clocks. For app workflows, also use `./script/build_and_run.sh --verify` when practical.
 
 `./script/build_and_run.sh --verify` is a launch smoke test only: it builds the app, opens it, and checks that the process remains running. It does not validate recording, transcription, the global shortcut, Accessibility permission, or text insertion. Do not report those workflows as verified unless they were exercised separately.
 
 ## Architecture Notes
 
 - `HoldToTalk/App/HoldToTalkApp.swift` owns the SwiftUI app entry, app delegate, main window, and menu bar extra.
-- `HoldToTalk/Stores/HoldToTalkController.swift` is the main `@MainActor` observable controller. Extensions split application state, recording, and recognition behavior.
+- `HoldToTalk/App/AppEnvironment.swift` assembles services and owns their lifecycle.
+- `HoldToTalk/Stores/DictationCoordinator.swift` owns independent recording sessions and ordered insertion. Feature stores publish settings, credentials, devices/permissions, models, recording, and diagnostics state.
 - `HoldToTalk/Services/` contains integration boundaries for audio capture, global shortcut monitoring, text injection, Keychain, cloud streaming, local sherpa recognition, and the transcription overlay.
 - `HoldToTalk/Views/` contains SwiftUI surfaces. `ContentView` is split with section/helper extensions.
 - `HoldToTalk/Support/L10n.swift` provides localized strings through `L10n.tr(...)`; use it for user-visible text.
@@ -112,7 +113,7 @@ Keep dylib linking in build settings and dylib embedding in the `Embed ThirdPart
 
 ## Coding Conventions
 
-- Use Swift concurrency deliberately; the main controller is `@MainActor`.
+- Use Swift concurrency deliberately; the coordinator and observable stores are `@MainActor`.
 - Keep user-facing strings localized with `L10n.tr(...)`.
 - Preserve the current file organization by feature boundary: app entry, stores, services, support, models, and views.
 - Prefer narrow changes over broad refactors, especially around permissions, global event taps, Keychain, and text insertion.
@@ -126,7 +127,7 @@ Keep dylib linking in build settings and dylib embedding in the `Embed ThirdPart
 ## Code Review Rules
 
 - Flag new user-visible strings that bypass `L10n.tr(...)`.
-- Flag actor-isolation violations around `@MainActor` controller state and callbacks from audio, shortcut, and recognition services.
+- Flag actor-isolation violations around `@MainActor` coordinator/store state and callbacks from audio, shortcut, and recognition services.
 - Treat changes to permissions, global shortcuts, audio capture, Keychain, text insertion, signing, or runtime embedding as high risk; check cleanup, error paths, and the matching verification command.
 - Flag loose asset or dylib references, `Recovered References`, or project-file changes that conflict with the synchronized-group and embedding rules above.
 
@@ -134,6 +135,7 @@ Keep dylib linking in build settings and dylib embedding in the `Embed ThirdPart
 
 Use the narrowest verification that matches the change:
 
+- Behavioral changes: `./script/test.sh` (no real microphone or cloud requests)
 - Swift-only source changes, quick compilation: `swift build --disable-sandbox --cache-path .build/cache/swiftpm --manifest-cache local`
 - App integration, packaging, or runtime changes: `./script/build_and_run.sh build`
 - Launch behavior changes: `./script/build_and_run.sh --verify` (launch smoke test only)

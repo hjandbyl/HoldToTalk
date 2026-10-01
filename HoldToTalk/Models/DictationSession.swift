@@ -50,6 +50,20 @@ enum TranscriptPolicy {
 enum DictationError: LocalizedError {
     case busy, bufferOverflow, timedOut, incompleteResult, captureFailed, targetUnavailable, insertionFailed
 
+    static func category(_ error: Error) -> String {
+        if error is CancellationError { return "cancelled" }
+        guard let error = error as? DictationError else { return "serviceFailure" }
+        switch error {
+        case .busy: return "queueFull"
+        case .bufferOverflow: return "bufferOverflow"
+        case .timedOut: return "timeout"
+        case .incompleteResult: return "incompleteResult"
+        case .captureFailed: return "captureFailure"
+        case .targetUnavailable: return "targetUnavailable"
+        case .insertionFailed: return "insertionFailure"
+        }
+    }
+
     var errorDescription: String? {
         switch self {
         case .busy: return L10n.tr("Too many pending recordings. Try again shortly.")

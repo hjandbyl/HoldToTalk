@@ -1,21 +1,21 @@
 import SwiftUI
 
-extension ContentView {
+extension MainSectionContent {
     var overviewSection: some View {
         VStack(alignment: .leading, spacing: 18) {
             SectionHeader(title: L10n.tr("Overview"), systemImage: "rectangle.grid.2x2")
 
             overviewHeroPanel
 
-            if controller.needsMicrophonePermission || controller.needsAccessibilityPermission {
+            if environment.devices.needsMicrophonePermission || environment.devices.needsAccessibilityPermission {
                 permissionWarning
             }
 
             if needsLocalSpeechModelDownloadNotice {
                 localSpeechModelDownloadNotice(showActions: true)
-            } else if controller.preferredRecognitionEngine == .volcengine, controller.needsVolcengineAPIKey {
+            } else if environment.settings.preferredRecognitionEngine == .volcengine, environment.credentials.needsVolcengineAPIKey {
                 volcengineAPIKeyNotice(showActions: true)
-            } else if controller.preferredRecognitionEngine == .qwenASR, controller.needsQwenASRAPIKey {
+            } else if environment.settings.preferredRecognitionEngine == .qwenASR, environment.credentials.needsQwenASRAPIKey {
                 qwenASRAPIKeyNotice(showActions: true)
             }
 
@@ -28,11 +28,11 @@ extension ContentView {
         HStack(alignment: .center, spacing: 18) {
             ZStack {
                 Circle()
-                    .fill(controller.isRecording ? Color.recordingAccent.opacity(0.14) : Color.accentColor.opacity(0.10))
+                    .fill(environment.recording.isRecording ? Color.recordingAccent.opacity(0.14) : Color.accentColor.opacity(0.10))
 
-                Image(systemName: controller.headerSystemImage)
+                Image(systemName: environment.recording.headerSystemImage)
                     .font(.system(size: 32, weight: .semibold))
-                    .foregroundStyle(controller.isRecording ? Color.recordingAccent : Color.accentColor)
+                    .foregroundStyle(environment.recording.isRecording ? Color.recordingAccent : Color.accentColor)
             }
             .frame(width: 56, height: 56)
 
@@ -43,7 +43,7 @@ extension ContentView {
 
                 HStack(spacing: 10) {
                     StatusDot(color: statusColor)
-                    Text(controller.statusMessage)
+                    Text(environment.recording.statusMessage)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -58,14 +58,14 @@ extension ContentView {
 
             VStack(alignment: .trailing, spacing: 8) {
                 ProminentGlassButton(
-                    title: controller.isRecording ? L10n.tr("Stop Test") : L10n.tr("Test Rec"),
-                    systemImage: controller.isRecording ? "stop.fill" : "record.circle",
-                    tint: controller.isRecording ? .recordingAccent : nil
+                    title: environment.recording.isRecording ? L10n.tr("Stop Test") : L10n.tr("Test Rec"),
+                    systemImage: environment.recording.isRecording ? "stop.fill" : "record.circle",
+                    tint: environment.recording.isRecording ? .recordingAccent : nil
                 ) {
-                    controller.toggleManualRecording()
+                    environment.toggleManualRecording()
                 }
 
-                Text(L10n.tr("Hold %@ in any app", controller.holdShortcut.displayName))
+                Text(L10n.tr("Hold %@ in any app", environment.settings.holdShortcut.displayName))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -91,7 +91,7 @@ extension ContentView {
                 title: L10n.tr("Permissions"),
                 value: permissionsSummary,
                 systemImage: "lock.shield.fill",
-                tint: (controller.needsMicrophonePermission || controller.needsAccessibilityPermission) ? .orange : .secondary,
+                tint: (environment.devices.needsMicrophonePermission || environment.devices.needsAccessibilityPermission) ? .orange : .secondary,
                 actionTitle: L10n.tr("Review"),
                 destination: .permissions
             )
@@ -107,7 +107,7 @@ extension ContentView {
 
             setupStepCard(
                 title: L10n.tr("Shortcut"),
-                value: controller.holdShortcut.displayName,
+                value: environment.settings.holdShortcut.displayName,
                 systemImage: "keyboard.fill",
                 tint: .secondary,
                 actionTitle: L10n.tr("Change"),
@@ -142,9 +142,9 @@ extension ContentView {
                 }
 
                 ScrollView {
-                    Text(controller.lastTranscript.isEmpty ? L10n.tr("No transcript yet.") : controller.lastTranscript)
+                    Text(environment.recording.lastTranscript.isEmpty ? L10n.tr("No transcript yet.") : environment.recording.lastTranscript)
                         .font(.callout)
-                        .foregroundStyle(controller.lastTranscript.isEmpty ? .secondary : .primary)
+                        .foregroundStyle(environment.recording.lastTranscript.isEmpty ? .secondary : .primary)
                         .lineLimit(6)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -168,10 +168,10 @@ extension ContentView {
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeader(title: L10n.tr("Health"), systemImage: "stethoscope")
 
-                compactStatusRow(title: L10n.tr("Microphone"), value: controller.microphoneStatusText, systemImage: "mic.fill")
-                compactStatusRow(title: L10n.tr("Input Device"), value: controller.inputDeviceText, systemImage: "speaker.wave.2.fill")
-                compactStatusRow(title: L10n.tr("Target App"), value: controller.targetAppText, systemImage: "app.connected.to.app.below.fill")
-                compactStatusRow(title: L10n.tr("Insertion"), value: controller.autoPaste ? L10n.tr("Auto paste on") : L10n.tr("Auto paste off"), systemImage: "text.cursor")
+                compactStatusRow(title: L10n.tr("Microphone"), value: environment.devices.microphoneStatusText, systemImage: "mic.fill")
+                compactStatusRow(title: L10n.tr("Input Device"), value: environment.devices.inputDeviceText, systemImage: "speaker.wave.2.fill")
+                compactStatusRow(title: L10n.tr("Target App"), value: environment.diagnostics.targetAppText, systemImage: "app.connected.to.app.below.fill")
+                compactStatusRow(title: L10n.tr("Insertion"), value: environment.settings.autoPaste ? L10n.tr("Auto paste on") : L10n.tr("Auto paste off"), systemImage: "text.cursor")
 
                 Spacer(minLength: 0)
 

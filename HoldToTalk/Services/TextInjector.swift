@@ -3,7 +3,7 @@ import ApplicationServices
 import Foundation
 
 @MainActor
-final class TextInjector {
+final class TextInjector: TextInserting {
     private static let accessibilityWebAreaRole = "AXWebArea"
     private static let pasteboardRestoreDelay: TimeInterval = 0.8
     private static let keyboardEventPreferredBundleIdentifiers: Set<String> = [
@@ -20,48 +20,47 @@ final class TextInjector {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    func insert(_ text: String, targetApplication: NSRunningApplication?) {
+    func insert(_ text: String, target: InsertionTarget?) async throws -> InsertionOutcome {
+        try Task.checkCancellation()
+        guard let target, let application = NSRunningApplication(processIdentifier: target.processIdentifier),
+              !application.isTerminated, application.bundleIdentifier == target.bundleIdentifier else {
+            throw DictationError.targetUnavailable
+        }
+        guard PermissionHelper.isAccessibilityTrusted else { throw DictationError.insertionFailed }
         let trimmedText = Self.normalizedInsertionText(from: text)
-        guard !trimmedText.isEmpty else { return }
-
-        if let targetApplication, !targetApplication.isTerminated {
-            let requiresActivation = !targetApplication.isActive
-            if #available(macOS 14.0, *) {
-                targetApplication.activate(options: [.activateAllWindows])
-            } else {
-                targetApplication.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
-            }
-
-            if requiresActivation {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                    self?.inject(trimmedText, targetApplication: targetApplication)
-                }
-                return
-            }
+        guard !trimmedText.isEmpty else { throw DictationError.insertionFailed }
+        if !application.isActive {
+            application.activate(options: [.activateAllWindows])
+            try await Task.sleep(for: .milliseconds(200))
         }
-
-        DispatchQueue.main.async { [weak self] in
-            self?.inject(trimmedText, targetApplication: targetApplication)
+        try Task.checkCancellation()
+        guard !application.isTerminated,
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processIdentifier else {
+            throw DictationError.targetUnavailable
         }
+        let outcome = try inject(trimmedText, targetApplication: application)
+        // A paste must consume its temporary clipboard before the next queued insertion.
+        if outcome == .pasteShortcut {
+            defer { restorePendingPasteboard() }
+            try await Task.sleep(for: .seconds(Self.pasteboardRestoreDelay))
+        }
+        return outcome
     }
 
-    private func inject(_ text: String, targetApplication: NSRunningApplication?) {
-        let focusedElement = focusedAccessibilityElement()
+    private func inject(_ text: String, targetApplication: NSRunningApplication) throws -> InsertionOutcome {
+        let focusedElement = focusedAccessibilityElement(in: targetApplication)
         let requiresKeyboardInput = Self.prefersKeyboardEvents(for: targetApplication)
             || focusedElement.map(isInsideWebArea) == true
-
-        if requiresKeyboardInput {
-            guard !postUnicodeKeyboardInput(text) else { return }
-            pasteUsingTemporaryPasteboard(text)
-            return
+        if !requiresKeyboardInput, let focusedElement, insertUsingAccessibility(text, into: focusedElement) {
+            return .accessibilityWrite
         }
-
-        if let focusedElement, insertUsingAccessibility(text, into: focusedElement) {
-            return
+        guard !targetApplication.isTerminated,
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == targetApplication.processIdentifier else {
+            throw DictationError.targetUnavailable
         }
-
-        guard !postUnicodeKeyboardInput(text) else { return }
-        pasteUsingTemporaryPasteboard(text)
+        if postUnicodeKeyboardInput(text, targetPID: targetApplication.processIdentifier) { return .keyboardEvents }
+        guard pasteUsingTemporaryPasteboard(text, targetPID: targetApplication.processIdentifier) else { throw DictationError.insertionFailed }
+        return .pasteShortcut
     }
 
     private static func prefersKeyboardEvents(for application: NSRunningApplication?) -> Bool {
@@ -69,14 +68,14 @@ final class TextInjector {
         return keyboardEventPreferredBundleIdentifiers.contains(bundleIdentifier)
     }
 
-    private func focusedAccessibilityElement() -> AXUIElement? {
+    private func focusedAccessibilityElement(in application: NSRunningApplication) -> AXUIElement? {
         guard PermissionHelper.isAccessibilityTrusted else { return nil }
 
-        let systemWideElement = AXUIElementCreateSystemWide()
+        let applicationElement = AXUIElementCreateApplication(application.processIdentifier)
         var focusedValue: CFTypeRef?
         guard
             AXUIElementCopyAttributeValue(
-                systemWideElement,
+                applicationElement,
                 kAXFocusedUIElementAttribute as CFString,
                 &focusedValue
             ) == .success,
@@ -145,7 +144,7 @@ final class TextInjector {
         ) == .success
     }
 
-    private func postUnicodeKeyboardInput(_ text: String) -> Bool {
+    private func postUnicodeKeyboardInput(_ text: String, targetPID: pid_t) -> Bool {
         guard let source = CGEventSource(stateID: .combinedSessionState) else { return false }
 
         let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true)
@@ -165,12 +164,12 @@ final class TextInjector {
         }
         keyDown.flags = []
         keyUp.flags = []
-        keyDown.post(tap: .cghidEventTap)
-        keyUp.post(tap: .cghidEventTap)
+        keyDown.postToPid(targetPID)
+        keyUp.postToPid(targetPID)
         return true
     }
 
-    private func pasteUsingTemporaryPasteboard(_ text: String) {
+    private func pasteUsingTemporaryPasteboard(_ text: String, targetPID: pid_t) -> Bool {
         let pasteboard = NSPasteboard.general
         if let lastInjectedChangeCount, pasteboard.changeCount != lastInjectedChangeCount {
             preservedPasteboard = PasteboardSnapshot(pasteboard: pasteboard)
@@ -185,22 +184,22 @@ final class TextInjector {
         pasteboardInjectionRevision += 1
         let revision = pasteboardInjectionRevision
 
-        guard postPasteShortcut() else {
+        guard postPasteShortcut(targetPID: targetPID) else {
             restorePasteboardIfUnchanged(
                 pasteboard,
                 injectedChangeCount: injectedChangeCount,
                 revision: revision
             )
-            return
+            return false
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.pasteboardRestoreDelay) { [weak self] in
-            self?.restorePasteboardIfUnchanged(
-                pasteboard,
-                injectedChangeCount: injectedChangeCount,
-                revision: revision
-            )
-        }
+        return true
+    }
+
+    private func restorePendingPasteboard() {
+        guard let lastInjectedChangeCount else { return }
+        restorePasteboardIfUnchanged(.general, injectedChangeCount: lastInjectedChangeCount,
+                                     revision: pasteboardInjectionRevision)
     }
 
     private func restorePasteboardIfUnchanged(
@@ -214,11 +213,10 @@ final class TextInjector {
             lastInjectedChangeCount = nil
         }
 
-        guard pasteboard.changeCount == injectedChangeCount else { return }
-        preservedPasteboard?.restore(to: pasteboard)
+        _ = preservedPasteboard?.restoreIfUnchanged(to: pasteboard, expectedChangeCount: injectedChangeCount)
     }
 
-    private func postPasteShortcut() -> Bool {
+    private func postPasteShortcut(targetPID: pid_t) -> Bool {
         guard let source = CGEventSource(stateID: .combinedSessionState) else { return false }
 
         let keyCodeForV: CGKeyCode = 0x09
@@ -229,13 +227,13 @@ final class TextInjector {
         keyDown.flags = .maskCommand
         keyUp.flags = .maskCommand
 
-        keyDown.post(tap: .cghidEventTap)
-        keyUp.post(tap: .cghidEventTap)
+        keyDown.postToPid(targetPID)
+        keyUp.postToPid(targetPID)
         return true
     }
 }
 
-private struct PasteboardSnapshot {
+struct PasteboardSnapshot {
     private let items: [[NSPasteboard.PasteboardType: Data]]
 
     init(pasteboard: NSPasteboard) {
@@ -250,7 +248,14 @@ private struct PasteboardSnapshot {
         }
     }
 
-    func restore(to pasteboard: NSPasteboard) {
+    @discardableResult
+    func restoreIfUnchanged(to pasteboard: NSPasteboard, expectedChangeCount: Int) -> Bool {
+        guard pasteboard.changeCount == expectedChangeCount else { return false }
+        restore(to: pasteboard)
+        return true
+    }
+
+    private func restore(to pasteboard: NSPasteboard) {
         pasteboard.clearContents()
 
         let pasteboardItems = items.compactMap { contents -> NSPasteboardItem? in

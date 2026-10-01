@@ -19,10 +19,15 @@ final class AudioRecorder: @unchecked Sendable {
     )
     private let spectrumAnalyzer = AudioSpectrumAnalyzer()
     private var captureBackend: AudioCaptureBackend?
+    private var captureBuffer: AudioCaptureBuffer?
+    private var failureHandler: (@Sendable (Error) -> Void)?
+    private var firstFrameHandler: (@Sendable () -> Void)?
     private var audioFile: AVAudioFile?
     private var recordingURL: URL?
     private var capturedFrames: AVAudioFramePosition = 0
     private var writeFailures = 0
+    private var recordingFailure: Error?
+    var failure: Error? { stateQueue.sync { recordingFailure } }
     private var inputFormatDescription = L10n.tr("Unknown")
     private var voiceProcessingDescription = L10n.tr("voice processing not started")
     private var inputSampleRate: Double = 0
@@ -63,17 +68,22 @@ final class AudioRecorder: @unchecked Sendable {
     func start(
         inputDeviceUID: String? = nil,
         streamingChunkHandler: StreamingChunkHandler? = nil,
-        inputAnalysisHandler: InputAnalysisHandler? = nil
+        inputAnalysisHandler: InputAnalysisHandler? = nil,
+        failureHandler: (@Sendable (Error) -> Void)? = nil,
+        firstFrameHandler: (@Sendable () -> Void)? = nil
     ) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("HoldToTalk-\(UUID().uuidString)")
             .appendingPathExtension("wav")
 
+        self.failureHandler = failureHandler
+        self.firstFrameHandler = firstFrameHandler
         stateQueue.sync {
             audioFile = nil
             recordingURL = url
             capturedFrames = 0
             writeFailures = 0
+            recordingFailure = nil
             inputFormatDescription = L10n.tr("Unknown")
             inputSampleRate = 0
             self.streamingChunkHandler = streamingChunkHandler
@@ -90,6 +100,9 @@ final class AudioRecorder: @unchecked Sendable {
             stateQueue.sync {
                 self.captureBackend = captureBackend
             }
+            captureBuffer = try AudioCaptureBuffer(format: captureBackend.format, consume: { [weak self] buffer in
+                self?.write(buffer)
+            }, failure: { [weak self] error in self?.failureHandler?(error) }, firstFrame: { [weak self] in self?.firstFrameHandler?() })
             try captureBackend.start()
             return url
         } catch {
@@ -114,7 +127,7 @@ final class AudioRecorder: @unchecked Sendable {
 
         return .audioUnit(
             try AudioUnitInputCapture(deviceID: device.deviceID) { [weak self] buffer in
-                self?.write(buffer)
+                self?.captureBuffer?.append(buffer)
             }
         )
     }
@@ -134,7 +147,7 @@ final class AudioRecorder: @unchecked Sendable {
             : 2_048
         inputNode.removeTap(onBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: tapBufferSize, format: inputFormat) { [weak self] buffer, _ in
-            self?.write(buffer)
+            self?.captureBuffer?.append(buffer)
         }
 
         engine.prepare()
@@ -152,6 +165,10 @@ final class AudioRecorder: @unchecked Sendable {
     }
 
     func stop() -> URL? {
+        let backend = stateQueue.sync { captureBackend }
+        backend?.stop()
+        do { try captureBuffer?.close() } catch { stateQueue.sync { recordingFailure = error } }
+        captureBuffer = nil
         let result = stateQueue.sync { () -> (url: URL?, captureBackend: AudioCaptureBackend?) in
             let url = recordingURL
             audioFile = nil
@@ -168,7 +185,6 @@ final class AudioRecorder: @unchecked Sendable {
             return (url, runningCaptureBackend)
         }
 
-        result.captureBackend?.stop()
         return result.url
     }
 
@@ -219,7 +235,9 @@ final class AudioRecorder: @unchecked Sendable {
                     }
                 }
             } catch {
+                recordingFailure = error
                 writeFailures += 1
+                if writeFailures == 1 { failureHandler?(error) }
             }
         }
 
@@ -339,6 +357,7 @@ final class AudioRecorder: @unchecked Sendable {
             outputBuffer.frameLength > 0,
             let samples = outputBuffer.int16ChannelData
         else {
+            if conversionError != nil { recordingFailure = DictationError.captureFailed; failureHandler?(DictationError.captureFailed) }
             return
         }
 
@@ -509,6 +528,13 @@ enum AudioRecorderError: LocalizedError {
 private enum AudioCaptureBackend {
     case engine(AVAudioEngine)
     case audioUnit(AudioUnitInputCapture)
+
+    var format: AVAudioFormat {
+        switch self {
+        case .engine(let engine): return engine.inputNode.outputFormat(forBus: 0)
+        case .audioUnit(let unit): return unit.format
+        }
+    }
 
     func start() throws {
         switch self {

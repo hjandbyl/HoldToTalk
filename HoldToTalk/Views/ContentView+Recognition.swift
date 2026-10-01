@@ -1,6 +1,6 @@
 import SwiftUI
 
-extension ContentView {
+extension MainSectionContent {
     var recognitionSection: some View {
         VStack(alignment: .leading, spacing: 18) {
             SectionHeader(title: L10n.tr("Recognition"), systemImage: "waveform")
@@ -13,7 +13,7 @@ extension ContentView {
             .pickerStyle(.segmented)
             .frame(maxWidth: 420, alignment: .leading)
 
-            switch controller.preferredRecognitionEngine {
+            switch environment.settings.preferredRecognitionEngine {
             case .volcengine:
                 volcenginePanel
             case .qwenASR:
@@ -27,7 +27,7 @@ extension ContentView {
     var recognitionLanguagePicker: some View {
         labeledControlRow(L10n.tr("Language")) {
             Picker(L10n.tr("Language"), selection: languageSelection) {
-                ForEach(controller.availableLanguages) { language in
+                ForEach(environment.settings.availableLanguages) { language in
                     Text(language.title).tag(language)
                 }
             }
@@ -47,42 +47,42 @@ extension ContentView {
 
             labeledControlRow(L10n.tr("Selected Model")) {
                 Picker(L10n.tr("Selected Model"), selection: localSpeechModelSelection) {
-                    ForEach(controller.localSpeechModels) { model in
+                    ForEach(environment.settings.localSpeechModels) { model in
                         Text(model.displayTitle).tag(model)
                     }
                 }
                 .labelsHidden()
                 .frame(width: 360, alignment: .leading)
 
-                if controller.isDownloadingLocalSpeechModel {
+                if environment.models.isDownloadingLocalSpeechModel {
                     Button {
-                        controller.cancelLocalSpeechModelDownload()
+                        environment.models.cancelLocalSpeechModelDownload()
                     } label: {
                         Label(L10n.tr("Cancel"), systemImage: "xmark.circle")
                     }
                 } else {
                     Button {
-                        controller.downloadSelectedLocalSpeechModel()
+                        environment.models.downloadSelectedLocalSpeechModel()
                     } label: {
                         Label(
-                            controller.isSelectedLocalSpeechModelInstalled ? L10n.tr("Downloaded") : L10n.tr("Download"),
-                            systemImage: controller.isSelectedLocalSpeechModelInstalled ? "checkmark.circle.fill" : "arrow.down.circle"
+                            environment.models.isSelectedLocalSpeechModelInstalled ? L10n.tr("Downloaded") : L10n.tr("Download"),
+                            systemImage: environment.models.isSelectedLocalSpeechModelInstalled ? "checkmark.circle.fill" : "arrow.down.circle"
                         )
                     }
-                    .disabled(controller.isSelectedLocalSpeechModelInstalled)
+                    .disabled(environment.models.isSelectedLocalSpeechModelInstalled)
                 }
             }
 
-            statusRow(title: L10n.tr("Model Status"), value: controller.localSpeechModelStatusText)
+            statusRow(title: L10n.tr("Model Status"), value: environment.models.localSpeechModelStatusText)
 
-            if controller.isDownloadingLocalSpeechModel {
-                ProgressView(value: controller.localSpeechModelDownloadProgress)
+            if environment.models.isDownloadingLocalSpeechModel {
+                ProgressView(value: environment.models.localSpeechModelDownloadProgress)
                     .progressViewStyle(.linear)
                     .frame(maxWidth: 520)
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(controller.localSpeechModels) { model in
+                ForEach(environment.settings.localSpeechModels) { model in
                     localSpeechModelRow(model)
                 }
             }
@@ -92,13 +92,13 @@ extension ContentView {
     }
 
     func localSpeechModelRow(_ model: LocalSpeechModel) -> some View {
-        let isSelected = controller.selectedLocalSpeechModel == model
-        let isInstalled = controller.isLocalSpeechModelInstalled(model)
-        let isDownloading = controller.downloadingLocalSpeechModelID == model.id
-        let isDeleting = controller.deletingLocalSpeechModelIDs.contains(model.id)
+        let isSelected = environment.settings.selectedLocalSpeechModel == model
+        let isInstalled = environment.models.isLocalSpeechModelInstalled(model)
+        let isDownloading = environment.models.downloadingLocalSpeechModelID == model.id
+        let isDeleting = environment.models.deletingLocalSpeechModelIDs.contains(model.id)
 
         return Button {
-            controller.setLocalSpeechModel(model)
+            environment.settings.setLocalSpeechModel(model)
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: isInstalled ? "checkmark.circle.fill" : (isDownloading ? "arrow.down.circle.fill" : "arrow.down.circle"))
@@ -146,32 +146,32 @@ extension ContentView {
                 .controlSize(.small)
         } else if isDownloading {
             Button {
-                controller.cancelLocalSpeechModelDownload()
+                environment.models.cancelLocalSpeechModelDownload()
             } label: {
                 Label(L10n.tr("Cancel"), systemImage: "xmark.circle")
             }
             .buttonStyle(.borderless)
         } else if isInstalled {
             Button {
-                controller.deleteLocalSpeechModel(model)
+                environment.models.deleteLocalSpeechModel(model)
             } label: {
                 Label(L10n.tr("Delete Model"), systemImage: "trash")
             }
             .buttonStyle(.borderless)
             .disabled(
-                controller.isRecording
-                    || controller.isTranscribing
-                    || controller.isDownloadingLocalSpeechModel
-                    || !controller.deletingLocalSpeechModelIDs.isEmpty
+                environment.recording.isRecording
+                    || environment.recording.isTranscribing
+                    || environment.models.isDownloadingLocalSpeechModel
+                    || !environment.models.deletingLocalSpeechModelIDs.isEmpty
             )
         } else {
             Button {
-                controller.downloadLocalSpeechModel(model)
+                environment.models.downloadLocalSpeechModel(model)
             } label: {
                 Label(L10n.tr("Download"), systemImage: "arrow.down.circle")
             }
             .buttonStyle(.borderless)
-            .disabled(controller.isDownloadingLocalSpeechModel || !controller.deletingLocalSpeechModelIDs.isEmpty)
+            .disabled(environment.models.isDownloadingLocalSpeechModel || !environment.models.deletingLocalSpeechModelIDs.isEmpty)
         }
     }
 
@@ -180,14 +180,14 @@ extension ContentView {
             SectionHeader(title: L10n.tr("Doubao Streaming Speech Recognition 2.0"), systemImage: "cloud.fill")
             recognitionLanguagePicker
 
-            if controller.needsVolcengineAPIKey {
+            if environment.credentials.needsVolcengineAPIKey {
                 volcengineAPIKeyNotice(showActions: false)
             }
 
             labeledControlRow(L10n.tr("API Key")) {
                 apiKeyInputField(
                     engine: .volcengine,
-                    text: $controller.volcengineAPIKeyDraft
+                    text: Binding(get: { environment.credentials.volcengineAPIKeyDraft }, set: { environment.credentials.volcengineAPIKeyDraft = $0 })
                 )
 
                 Link(destination: volcengineAPIKeyURL) {
@@ -195,7 +195,7 @@ extension ContentView {
                 }
             }
 
-            statusRow(title: L10n.tr("Key Status"), value: controller.volcengineAPIKeyStatusText)
+            statusRow(title: L10n.tr("Key Status"), value: environment.credentials.volcengineAPIKeyStatusText)
         }
         .padding(16)
         .contentSurface()
@@ -206,14 +206,14 @@ extension ContentView {
             SectionHeader(title: L10n.tr("Qwen3-ASR Flash Realtime"), systemImage: "cloud.fill")
             recognitionLanguagePicker
 
-            if controller.needsQwenASRAPIKey {
+            if environment.credentials.needsQwenASRAPIKey {
                 qwenASRAPIKeyNotice(showActions: false)
             }
 
             labeledControlRow(L10n.tr("API Key")) {
                 apiKeyInputField(
                     engine: .qwenASR,
-                    text: $controller.qwenASRAPIKeyDraft
+                    text: Binding(get: { environment.credentials.qwenASRAPIKeyDraft }, set: { environment.credentials.qwenASRAPIKeyDraft = $0 })
                 )
 
                 Link(destination: qwenASRAPIKeyURL) {
@@ -221,7 +221,7 @@ extension ContentView {
                 }
             }
 
-            statusRow(title: L10n.tr("Key Status"), value: controller.qwenASRAPIKeyStatusText)
+            statusRow(title: L10n.tr("Key Status"), value: environment.credentials.qwenASRAPIKeyStatusText)
         }
         .padding(16)
         .contentSurface()
@@ -238,9 +238,6 @@ extension ContentView {
             }
             .textFieldStyle(.roundedBorder)
             .frame(maxWidth: 360)
-            .onChange(of: text.wrappedValue) { _, _ in
-                scheduleAPIKeyAutosave(for: engine)
-            }
 
             Button {
                 revealAPIKey(for: engine)
@@ -350,7 +347,7 @@ extension ContentView {
                     Text(L10n.tr("Local model is not downloaded"))
                         .font(.headline)
 
-                    Text(L10n.tr("Download %@ before using local recognition.", controller.selectedLocalSpeechModel.displayTitle))
+                    Text(L10n.tr("Download %@ before using local recognition.", environment.settings.selectedLocalSpeechModel.displayTitle))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
