@@ -203,8 +203,26 @@ extension MainSectionContent {
 
     var qwenASRPanel: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionHeader(title: L10n.tr("Qwen3-ASR Flash Realtime"), systemImage: "cloud.fill")
-            recognitionLanguagePicker
+            SectionHeader(title: L10n.tr("Qwen Speech Recognition"), systemImage: "cloud.fill")
+            labeledControlRow(L10n.tr("Selected Model")) {
+                Picker(L10n.tr("Selected Model"), selection: Binding(
+                    get: { environment.settings.selectedQwenSpeechModel },
+                    set: { environment.settings.setQwenSpeechModel($0) }
+                )) {
+                    ForEach(QwenSpeechModel.allCases) { model in
+                        Text(model.title).tag(model)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 320, alignment: .leading)
+            }
+            if environment.settings.selectedQwenSpeechModel == .message {
+                Text(L10n.tr("Automatically detects the spoken language and preserves dialect wording. Text polishing is off."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                recognitionLanguagePicker
+            }
 
             if environment.credentials.needsQwenASRAPIKey {
                 qwenASRAPIKeyNotice(showActions: false)

@@ -45,10 +45,12 @@ Accessibility is needed for global shortcut detection and text insertion into th
 HoldToTalk supports three recognition engines:
 
 - `Doubao Streaming Speech Recognition 2.0`: cloud streaming recognition with partial text while recording and a final result after release.
-- `Qwen3-ASR Flash Realtime`: DashScope WebSocket cloud streaming recognition with partial text while recording and a final result after release.
+- `Qwen Speech Recognition`: Qwen-Audio 3.1 ASR Flash Message by default, with the previous Qwen3-ASR Flash Realtime model available in the model picker. Both use DashScope WebSocket cloud streaming with partial text while recording and a confirmed final result after release.
 - `sherpa-onnx Local`: offline recognition from the full recording after release.
 
 Set the cloud recognition API key in the app window. Keys are saved to the macOS Keychain and are not stored in source code.
+
+For Qwen, choose **Recognition → Qwen → Qwen-Audio 3.1 ASR Flash Message** and use a Beijing-region Alibaba Cloud Model Studio API key with access to `qwen-audio-3.1-asr-flash-message`. Existing saved Qwen keys are reused. Message recognition uses the public `wss://dashscope.aliyuncs.com/api-ws/v1/inference` endpoint, waits for `task-started` before sending 16 kHz mono PCM, and waits for `task-finished` before returning confirmed sentences. Languages are detected automatically, dialect wording is preserved, and native text polishing is disabled. The explicit language picker remains available for the legacy Realtime model. See the [official client events](https://help.aliyun.com/zh/model-studio/qwen-asr-message-client-events) and [server events](https://help.aliyun.com/zh/model-studio/qwen-asr-message-server-events).
 
 Local ASR models are not bundled in the app package. Choose and download a SenseVoice, FireRedASR, or Whisper model from the Recognition panel. Downloaded local models are stored under the user's Application Support directory at `HoldToTalk/models`; development builds also detect matching model folders under the repository's root `models` directory.
 

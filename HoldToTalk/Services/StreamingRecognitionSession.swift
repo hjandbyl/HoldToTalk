@@ -37,6 +37,12 @@ final class URLSessionWebSocketTransport: WebSocketTransport, @unchecked Sendabl
 actor StreamingRecognitionSession: CloudRecognizing {
     private let engine: RecognitionEngine
     private let apiKey: String
+    private let qwenModel: QwenSpeechModel
+    private let qwenTaskID = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+    private let qwenTaskStarted = AsyncResult<Void>()
+    private var qwenStarted = false
+    private var qwenFinishRequested = false
+    private var qwenTranscript = QwenMessageTranscript()
     private let clock: any DictationClock
     private let makeTransport: @Sendable (URLRequest) -> any WebSocketTransport
     private let idleFailureHandler: @Sendable () -> Void
@@ -52,15 +58,19 @@ actor StreamingRecognitionSession: CloudRecognizing {
     private var active = false
     private var language: TranscriptionLanguage?
 
-    init(engine: RecognitionEngine, apiKey: String, clock: any DictationClock = SystemDictationClock(),
+    init(engine: RecognitionEngine, apiKey: String, qwenModel: QwenSpeechModel = .message,
+         clock: any DictationClock = SystemDictationClock(),
          idleFailureHandler: @escaping @Sendable () -> Void = {},
          makeTransport: @escaping @Sendable (URLRequest) -> any WebSocketTransport = { URLSessionWebSocketTransport(request: $0) }) {
         self.engine = engine
         self.apiKey = apiKey
+        self.qwenModel = qwenModel
         self.clock = clock
         self.makeTransport = makeTransport
         self.idleFailureHandler = idleFailureHandler
     }
+
+    private var isQwenMessage: Bool { engine == .qwenASR && qwenModel == .message }
 
     func prepare(language: TranscriptionLanguage) async throws {
         try Task.checkCancellation()
@@ -74,6 +84,9 @@ actor StreamingRecognitionSession: CloudRecognizing {
             request.setValue(apiKey, forHTTPHeaderField: "X-Api-Key")
             request.setValue("volc.seedasr.sauc.duration", forHTTPHeaderField: "X-Api-Resource-Id")
             request.setValue(UUID().uuidString, forHTTPHeaderField: "X-Api-Connect-Id")
+        } else if isQwenMessage {
+            request = URLRequest(url: QwenMessageWireProtocol.endpoint)
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         } else {
             request = URLRequest(url: URL(string: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=qwen3-asr-flash-realtime")!)
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -81,29 +94,41 @@ actor StreamingRecognitionSession: CloudRecognizing {
         }
         let transport = makeTransport(request)
         self.transport = transport
-        let initial: URLSessionWebSocketTask.Message = engine == .volcengine
-            ? .data(VolcengineWireProtocol.fullClientRequest(language: language))
-            : .string(QwenWireProtocol.sessionUpdateMessage(language: language))
+        let initial: URLSessionWebSocketTask.Message
+        if engine == .volcengine {
+            initial = .data(VolcengineWireProtocol.fullClientRequest(language: language))
+        } else if isQwenMessage {
+            initial = .string(QwenMessageWireProtocol.startMessage(taskID: qwenTaskID))
+        } else {
+            initial = .string(QwenWireProtocol.sessionUpdateMessage(language: language))
+        }
         let clock = clock
-        let opening = Task { try await withDictationTimeout(seconds: 5, clock: clock) { try await transport.send(initial) } }
+        let needsAcknowledgement = isQwenMessage
+        let acknowledgement = qwenTaskStarted
+        let opening = Task {
+            try await withDictationTimeout(seconds: 5, clock: clock) {
+                try await transport.send(initial)
+                if needsAcknowledgement { try await acknowledgement.value() }
+            }
+        }
         openingTask = opening
+        receiveTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    let message = try await transport.receive()
+                    guard let self else { return }
+                    if try await self.handle(message) { return }
+                } catch {
+                    await self?.fail(error)
+                    return
+                }
+            }
+        }
         do {
             try await opening.value
             try Task.checkCancellation()
             guard !closed else { throw CancellationError() }
-            receiveTask = Task { [weak self] in
-                while !Task.isCancelled {
-                    do {
-                        let message = try await transport.receive()
-                        guard let self else { return }
-                        if try await self.handle(message) { return }
-                    } catch {
-                        await self?.fail(error)
-                        return
-                    }
-                }
-            }
-        } catch { fail(error); throw error }
+        } catch { fail(error); throw terminalError ?? error }
     }
 
     func start(language: TranscriptionLanguage, eventHandler: @escaping @Sendable (CloudRecognitionEvent) -> Void) async throws {
@@ -117,8 +142,13 @@ actor StreamingRecognitionSession: CloudRecognizing {
 
     func sendAudio(_ data: Data) async throws {
         guard !data.isEmpty else { return }
-        try await send(engine == .volcengine ? .data(VolcengineWireProtocol.audioRequest(payload: data, isFinal: false))
-            : .string(QwenWireProtocol.audioAppendMessage(audio: data.base64EncodedString())))
+        if engine == .volcengine {
+            try await send(.data(VolcengineWireProtocol.audioRequest(payload: data, isFinal: false)))
+        } else if isQwenMessage {
+            try await send(.data(data))
+        } else {
+            try await send(.string(QwenWireProtocol.audioAppendMessage(audio: data.base64EncodedString())))
+        }
     }
 
     func finish(finalAudio: Data?) async throws -> String {
@@ -127,7 +157,12 @@ actor StreamingRecognitionSession: CloudRecognizing {
                 try await send(.data(VolcengineWireProtocol.audioRequest(payload: finalAudio ?? Data(), isFinal: true)))
             } else {
                 if let finalAudio { try await sendAudio(finalAudio) }
-                try await send(.string(QwenWireProtocol.finishMessage()))
+                if isQwenMessage {
+                    qwenFinishRequested = true
+                    try await send(.string(QwenMessageWireProtocol.finishMessage(taskID: qwenTaskID)))
+                } else {
+                    try await send(.string(QwenWireProtocol.finishMessage()))
+                }
             }
             let finalResult = finalResult
             let text = try await withDictationTimeout(seconds: engine == .volcengine ? 2 : 5, clock: clock) {
@@ -156,6 +191,7 @@ actor StreamingRecognitionSession: CloudRecognizing {
 
     private func handle(_ message: URLSessionWebSocketTask.Message) throws -> Bool {
         guard !closed else { return true }
+        if isQwenMessage { return try handleQwenMessage(message) }
         let response: ParsedServerResponse?
         switch (engine, message) {
         case (.volcengine, .data(let data)): response = try VolcengineWireProtocol.parseServerResponse(data)
@@ -177,9 +213,35 @@ actor StreamingRecognitionSession: CloudRecognizing {
         return false
     }
 
+    private func handleQwenMessage(_ message: URLSessionWebSocketTask.Message) throws -> Bool {
+        let text: String
+        switch message {
+        case .string(let string): text = string
+        case .data(let data):
+            guard let string = String(data: data, encoding: .utf8) else { throw QwenASRStreamingClientError.invalidResponse }
+            text = string
+        @unknown default: throw QwenASRStreamingClientError.invalidResponse
+        }
+        guard let event = try QwenMessageWireProtocol.parseServerResponse(text, taskID: qwenTaskID) else { return false }
+        switch event {
+        case .started:
+            qwenStarted = true
+            qwenTaskStarted.resolve(.success(()))
+        case .sentence(let sentence):
+            guard qwenStarted else { throw QwenASRStreamingClientError.invalidResponse }
+            if let update = qwenTranscript.update(sentence) { handler?(.update(update)) }
+        case .finished:
+            guard qwenStarted, qwenFinishRequested else { throw DictationError.incompleteResult }
+            finalResult.resolve(.success(try qwenTranscript.finalText()))
+            return true
+        }
+        return false
+    }
+
     private func fail(_ error: Error) {
         guard terminalError == nil else { return }
         terminalError = error
+        qwenTaskStarted.resolve(.failure(error))
         let eventHandler = handler
         closeTransport()
         finalResult.resolve(.failure(error))

@@ -16,7 +16,7 @@ enum RecognitionEngine: String, CaseIterable, Identifiable {
         case .volcengine:
             return L10n.tr("Doubao Streaming Speech Recognition 2.0")
         case .qwenASR:
-            return L10n.tr("Qwen3-ASR Flash Realtime")
+            return L10n.tr("Qwen Speech Recognition")
         case .sherpaOnnx:
             return L10n.tr("sherpa-onnx Local")
         }

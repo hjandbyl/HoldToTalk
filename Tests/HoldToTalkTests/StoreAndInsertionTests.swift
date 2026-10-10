@@ -45,6 +45,26 @@ final class StoreAndInsertionTests: XCTestCase {
         XCTAssertNotNil(defaults.data(forKey: "HoldToTalk.holdShortcut"))
     }
 
+    func testQwenModelSelectionPersistsAndPreservesLegacyLanguageChoice() {
+        let name = "HoldToTalk-test-qwen-model-\(UUID())"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = SettingsStore(defaults: defaults)
+        XCTAssertEqual(store.selectedQwenSpeechModel, .message)
+        XCTAssertEqual(store.availableLanguages(for: .qwenASR), [.auto])
+        var changes = 0
+        store.configurationDidChange = { changes += 1 }
+        store.setPreferredRecognitionEngine(.qwenASR)
+        store.setQwenSpeechModel(.realtime)
+        store.setLanguage(.zh)
+        store.setQwenSpeechModel(.message)
+        XCTAssertEqual(store.language(for: .qwenASR), .auto)
+        store.setQwenSpeechModel(.realtime)
+        XCTAssertEqual(store.language(for: .qwenASR), .zh)
+        XCTAssertEqual(SettingsStore(defaults: defaults).selectedQwenSpeechModel, .realtime)
+        XCTAssertEqual(changes, 5)
+    }
+
     func testStaleDownloadProgressAndCompletionCannotOverwriteRestart() async {
         let downloads = ControlledDownloads()
         let settings = SettingsStore(defaults: UserDefaults(suiteName: "HoldToTalk-model-test-\(UUID())")!)

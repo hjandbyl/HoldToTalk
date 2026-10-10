@@ -157,7 +157,7 @@ final class AppEnvironment: GlobalFnKeyMonitorDelegate {
             model: settings.selectedLocalSpeechModel, inputDeviceUID: device, target: target, trigger: trigger,
             autoPaste: settings.autoPaste, removesTrailingSentencePeriod: settings.removesTrailingSentencePeriod,
             tailPadding: AudioDeviceInspector.isBluetoothInputDevice(uid: device) ? 0.35 : 0,
-            retainDiagnosticAudio: diagnostics.retainDiagnosticAudio))
+            retainDiagnosticAudio: diagnostics.retainDiagnosticAudio, qwenSpeechModel: settings.selectedQwenSpeechModel))
     }
     private func devicesDidRefresh() {
         guard !stopping else { return }
@@ -239,31 +239,34 @@ final class AppEnvironment: GlobalFnKeyMonitorDelegate {
 final class CloudSessionFactory {
     private let credentials: CredentialStore
     private let settings: SettingsStore
-    private var prepared: (id: UUID, engine: RecognitionEngine, language: TranscriptionLanguage, client: any CloudRecognizing)?
+    private var prepared: (id: UUID, engine: RecognitionEngine, language: TranscriptionLanguage, qwenModel: QwenSpeechModel, client: any CloudRecognizing)?
     private var task: Task<Void, Never>?
     private var retiring: [UUID: Task<Void, Never>] = [:]
     init(credentials: CredentialStore, settings: SettingsStore) { self.credentials = credentials; self.settings = settings }
-    func take(_ engine: RecognitionEngine) -> any CloudRecognizing {
-        if let prepared, prepared.engine == engine, prepared.language == settings.language(for: engine) {
+    func take(_ configuration: SessionConfiguration) -> any CloudRecognizing {
+        let engine = configuration.engine
+        if let prepared, prepared.engine == engine, prepared.language == configuration.language,
+           engine != .qwenASR || prepared.qwenModel == configuration.qwenSpeechModel {
             self.prepared = nil
             task = nil
             return prepared.client
         }
-        return StreamingRecognitionSession(engine: engine, apiKey: credentials.apiKey(for: engine))
+        return StreamingRecognitionSession(engine: engine, apiKey: credentials.apiKey(for: engine), qwenModel: configuration.qwenSpeechModel)
     }
     func prepare() {
         let engine = settings.preferredRecognitionEngine
         guard engine.isCloud, !credentials.needsAPIKey(for: engine), prepared == nil else { return }
         let language = settings.language(for: engine)
         let id = UUID()
-        let client = StreamingRecognitionSession(engine: engine, apiKey: credentials.apiKey(for: engine), idleFailureHandler: { [weak self] in
+        let qwenModel = settings.selectedQwenSpeechModel
+        let client = StreamingRecognitionSession(engine: engine, apiKey: credentials.apiKey(for: engine), qwenModel: qwenModel, idleFailureHandler: { [weak self] in
             Task { @MainActor in
                 guard self?.prepared?.id == id else { return }
                 self?.prepared = nil
                 self?.task = nil
             }
         })
-        prepared = (id, engine, language, client)
+        prepared = (id, engine, language, qwenModel, client)
         task = Task { [weak self] in
             do { try await client.prepare(language: language) }
             catch {

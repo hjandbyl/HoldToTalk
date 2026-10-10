@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+### Added
+
+- Added Qwen-Audio 3.1 ASR Flash Message as the default Qwen cloud model, with task-start acknowledgement, binary PCM streaming, sentence revisions, and confirmed multi-sentence results. The existing Qwen Realtime model remains selectable and uses the same saved API key.
+
 ### Changed
 
 - Replaced the shared controller with an application composition root, feature stores, and independently owned dictation sessions with capture-order text insertion and configuration snapshots.

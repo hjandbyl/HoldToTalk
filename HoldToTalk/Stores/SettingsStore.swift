@@ -8,6 +8,7 @@ final class SettingsStore: ObservableObject {
     @Published var selectedLocalSpeechModel: LocalSpeechModel
     @Published var volcengineLanguage: TranscriptionLanguage = .auto
     @Published var qwenASRLanguage: TranscriptionLanguage = .auto
+    @Published private(set) var selectedQwenSpeechModel: QwenSpeechModel
     @Published var sherpaOnnxLanguage: TranscriptionLanguage = .auto
     @Published var holdShortcut: HoldShortcut
     @Published var isRecordingShortcut = false
@@ -20,6 +21,8 @@ final class SettingsStore: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        selectedQwenSpeechModel = defaults.string(forKey: "HoldToTalk.qwenSpeechModel")
+            .flatMap(QwenSpeechModel.init(rawValue:)) ?? .message
         holdShortcut = defaults.data(forKey: "HoldToTalk.holdShortcut").flatMap { try? JSONDecoder().decode(HoldShortcut.self, from: $0) } ?? .defaultShortcut
         selectedLocalSpeechModel = defaults.string(forKey: "HoldToTalk.localSpeechModel").map(LocalSpeechModel.model(id:)) ?? .defaultModel
         removesTrailingSentencePeriod = defaults.object(forKey: "HoldToTalk.removesTrailingSentencePeriod") == nil
@@ -42,7 +45,7 @@ final class SettingsStore: ObservableObject {
     func availableLanguages(for engine: RecognitionEngine) -> [TranscriptionLanguage] {
         switch engine {
         case .volcengine: return TranscriptionLanguage.volcengineLanguages
-        case .qwenASR: return TranscriptionLanguage.qwenASRLanguages
+        case .qwenASR: return selectedQwenSpeechModel.supportedLanguages
         case .sherpaOnnx: return selectedLocalSpeechModel.supportedLanguages
         }
     }
@@ -57,6 +60,11 @@ final class SettingsStore: ObservableObject {
     }
     func setPreferredRecognitionEngine(_ engine: RecognitionEngine) {
         preferredRecognitionEngine = engine
+        configurationDidChange?()
+    }
+    func setQwenSpeechModel(_ model: QwenSpeechModel) {
+        selectedQwenSpeechModel = model
+        defaults.set(model.rawValue, forKey: "HoldToTalk.qwenSpeechModel")
         configurationDidChange?()
     }
     func setLocalSpeechModel(_ model: LocalSpeechModel) {

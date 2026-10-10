@@ -17,6 +17,7 @@ struct SessionConfiguration: Sendable {
     let removesTrailingSentencePeriod: Bool
     let tailPadding: TimeInterval
     let retainDiagnosticAudio: Bool
+    var qwenSpeechModel: QwenSpeechModel = .message
 }
 
 enum RecordingTrigger: Sendable, Equatable {

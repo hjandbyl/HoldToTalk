@@ -82,7 +82,7 @@ struct MainSectionContent: View {
     @State var revealedAPIKeyEngine: RecognitionEngine?
     let labelWidth: CGFloat = 136
     let volcengineAPIKeyURL = URL(string: "https://console.volcengine.com/speech/new/overview?projectName=default")!
-    let qwenASRAPIKeyURL = URL(string: "https://bailian.console.aliyun.com/?tab=model#/api-key")!
+    let qwenASRAPIKeyURL = URL(string: "https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key")!
     var appLanguage: AppLanguage { AppLanguage(rawValue: appLanguageID) ?? .system }
 
     init(environment: AppEnvironment, section: MainSection, selectedSection: Binding<MainSection?>) {

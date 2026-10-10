@@ -42,7 +42,7 @@ final class DictationCoordinator {
     let recording: RecordingStore
     let diagnostics: DiagnosticsStore
     private let makeCapture: () -> any RecordingCapture
-    private let makeCloud: (RecognitionEngine) -> any CloudRecognizing
+    private let makeCloud: (SessionConfiguration) -> any CloudRecognizing
     private let local: any LocalRecognizing
     private let injector: any TextInserting
     private let clock: any DictationClock
@@ -61,7 +61,7 @@ final class DictationCoordinator {
 
     init(recording: RecordingStore, diagnostics: DiagnosticsStore,
          makeCapture: @escaping () -> any RecordingCapture,
-         makeCloud: @escaping (RecognitionEngine) -> any CloudRecognizing,
+         makeCloud: @escaping (SessionConfiguration) -> any CloudRecognizing,
          local: any LocalRecognizing, injector: any TextInserting,
          clock: any DictationClock = SystemDictationClock()) {
         self.recording = recording
@@ -100,7 +100,7 @@ final class DictationCoordinator {
             return
         }
         let session = DictationSession(configuration: configuration, capture: makeCapture(),
-            cloud: configuration.engine.isCloud ? makeCloud(configuration.engine) : nil, startedAt: pressedAt)
+            cloud: configuration.engine.isCloud ? makeCloud(configuration) : nil, startedAt: pressedAt)
         sessions.append(session)
         active = session
         overlaySessionID = session.id
