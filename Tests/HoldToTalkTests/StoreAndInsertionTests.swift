@@ -45,6 +45,43 @@ final class StoreAndInsertionTests: XCTestCase {
         XCTAssertNotNil(defaults.data(forKey: "HoldToTalk.holdShortcut"))
     }
 
+    func testRecognitionEngineSelectionSurvivesRestart() {
+        let name = "HoldToTalk-test-recognition-engine-\(UUID())"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = SettingsStore(defaults: defaults)
+        var changes = 0
+        store.configurationDidChange = { changes += 1 }
+
+        for engine in [RecognitionEngine.qwenASR, .sherpaOnnx, .volcengine] {
+            store.setPreferredRecognitionEngine(engine)
+            let restored = SettingsStore(defaults: UserDefaults(suiteName: name)!)
+            XCTAssertEqual(restored.preferredRecognitionEngine, engine)
+        }
+        XCTAssertEqual(changes, 3)
+    }
+
+    func testRecognitionEngineChangesFromCredentialSaveSurviveRestart() {
+        let name = "HoldToTalk-test-credential-engine-\(UUID())"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = SettingsStore(defaults: defaults)
+
+        // Credential saves also select their engine by assigning this property directly.
+        store.preferredRecognitionEngine = .qwenASR
+        XCTAssertEqual(SettingsStore(defaults: UserDefaults(suiteName: name)!).preferredRecognitionEngine, .qwenASR)
+    }
+
+    func testRecognitionEngineDefaultsToDoubaoForMissingOrUnknownPreference() {
+        let name = "HoldToTalk-test-default-engine-\(UUID())"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        XCTAssertEqual(SettingsStore(defaults: defaults).preferredRecognitionEngine, .volcengine)
+        defaults.set("unknown-engine", forKey: "HoldToTalk.preferredRecognitionEngine")
+        XCTAssertEqual(SettingsStore(defaults: defaults).preferredRecognitionEngine, .volcengine)
+    }
+
     func testQwenModelSelectionPersistsAndPreservesLegacyLanguageChoice() {
         let name = "HoldToTalk-test-qwen-model-\(UUID())"
         let defaults = UserDefaults(suiteName: name)!

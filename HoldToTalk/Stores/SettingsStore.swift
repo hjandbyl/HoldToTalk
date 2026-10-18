@@ -4,7 +4,9 @@ import Foundation
 final class SettingsStore: ObservableObject {
     @Published var isEnabled = true
     @Published var autoPaste = true
-    @Published var preferredRecognitionEngine: RecognitionEngine = .volcengine
+    @Published var preferredRecognitionEngine: RecognitionEngine {
+        didSet { defaults.set(preferredRecognitionEngine.rawValue, forKey: "HoldToTalk.preferredRecognitionEngine") }
+    }
     @Published var selectedLocalSpeechModel: LocalSpeechModel
     @Published var volcengineLanguage: TranscriptionLanguage = .auto
     @Published var qwenASRLanguage: TranscriptionLanguage = .auto
@@ -21,6 +23,8 @@ final class SettingsStore: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        preferredRecognitionEngine = defaults.string(forKey: "HoldToTalk.preferredRecognitionEngine")
+            .flatMap(RecognitionEngine.init(rawValue:)) ?? .volcengine
         selectedQwenSpeechModel = defaults.string(forKey: "HoldToTalk.qwenSpeechModel")
             .flatMap(QwenSpeechModel.init(rawValue:)) ?? .message
         holdShortcut = defaults.data(forKey: "HoldToTalk.holdShortcut").flatMap { try? JSONDecoder().decode(HoldShortcut.self, from: $0) } ?? .defaultShortcut

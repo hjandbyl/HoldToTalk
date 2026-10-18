@@ -85,12 +85,30 @@ sign_app() {
   if [[ -z "$identity" && "${CODE_SIGN_IDENTITY:-}" != "-" ]]; then
     identity="${CODE_SIGN_IDENTITY:-}"
   fi
-  if [[ -z "$identity" ]] && command -v security >/dev/null 2>&1; then
-    identity="$(
-      security find-identity -p codesigning -v 2>/dev/null \
-        | sed -nE 's/.*"((HoldToTalk Local Code Signing|Apple Development|Mac Developer|Developer ID Application):[^"]*)".*/\1/p' \
-        | head -n 1
+  if command -v security >/dev/null 2>&1; then
+    local available_identities resolved_identity
+    available_identities="$(security find-identity -p codesigning -v 2>/dev/null || true)"
+    # codesign can misdecode non-ASCII certificate names. Resolve the same
+    # certificate to its SHA-1 fingerprint before passing it to --sign.
+    resolved_identity="$(
+      printf '%s\n' "$available_identities" \
+        | HOLDTOTALK_REQUESTED_SIGN_IDENTITY="$identity" LC_ALL=C awk '
+            BEGIN { requested = ENVIRON["HOLDTOTALK_REQUESTED_SIGN_IDENTITY"] }
+            length($2) == 40 && $2 !~ /[^[:xdigit:]]/ {
+              name = $0
+              sub(/^[^"]*"/, "", name)
+              sub(/".*$/, "", name)
+              if (!found && ((requested != "" && (name == requested || toupper($2) == toupper(requested))) ||
+                  (requested == "" && name ~ /^(HoldToTalk Local Code Signing|Apple Development|Mac Developer|Developer ID Application):/))) {
+                print $2
+                found = 1
+              }
+            }
+          '
     )"
+    if [[ -n "$resolved_identity" ]]; then
+      identity="$resolved_identity"
+    fi
   fi
 
   if [[ -n "$identity" ]]; then

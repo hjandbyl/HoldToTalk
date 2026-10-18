@@ -68,6 +68,8 @@ HOLDTOTALK_SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" ./script/build_
 
 If `HOLDTOTALK_SIGN_IDENTITY` is not set, the build script will try to use the first available `HoldToTalk Local Code Signing`, `Apple Development`, `Mac Developer`, or `Developer ID Application` identity. If none exists, run `./script/build_and_run.sh --adhoc` to create an ad-hoc package.
 
+You can also set `HOLDTOTALK_SIGN_IDENTITY` to a certificate's 40-character SHA-1 fingerprint from `security find-identity -p codesigning -v`. The script resolves automatically selected certificates and exact certificate names to fingerprints before signing so non-ASCII names do not cause encoding failures.
+
 ## Requirements
 
 - macOS 14 or later

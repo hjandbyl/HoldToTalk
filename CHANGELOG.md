@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-10-18
+
 ### Added
 
 - Added Qwen-Audio 3.1 ASR Flash Message as the default Qwen cloud model, with task-start acknowledgement, binary PCM streaming, sentence revisions, and confirmed multi-sentence results. The existing Qwen Realtime model remains selectable and uses the same saved API key.
@@ -19,6 +21,9 @@ The format is based on Keep a Changelog, and this project uses semantic versioni
 
 ### Fixed
 
+- Resolved signing certificates to their SHA-1 fingerprints in the build script, avoiding code-signing failures caused by non-ASCII certificate names while preserving certificate selection and explicit overrides.
+- Made microphone waveforms analyze every input channel, combine frequency-band energy without phase cancellation, and normalize quieter input with up to 24 dB of display-only gain. A -60 dBFS noise gate keeps silence quiet, and each recording resets its gain reference. Recorded audio and recognition input are unchanged.
+- Persisted the selected recognition engine whenever it changes and restored it on launch, including changes made when saving engine credentials. Qwen and local recognition no longer reset to Doubao after restarting the app.
 - Added the existing SwiftPM test directory to Xcode's synchronized project navigator so test sources are visible and new test files appear automatically.
 - Isolated overlapping cloud recordings, propagated network failures and timeouts, and prevented late callbacks, cancelled sessions, and stale model downloads from overwriting newer work.
 - Waited for capture buffers to drain before finalizing audio and ensured session tasks, connections, and temporary recordings are cleaned up on errors and shutdown.
